@@ -4,6 +4,8 @@ import * as memberService from './memberService';
 import * as loanRepository from '../repositories/loanRepository';
 import { BusinessRuleError, NotFoundError, ValidationError } from '../errors';
 
+const LOAN_PERIOD_DAYS = 14;
+
 const isInteger = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isInteger(value);
 };
@@ -33,11 +35,14 @@ const borrowBook = (memberId: string, bookId: string, copies: number): Loan => {
 
   const borrowedAt = new Date().toISOString();
 
+  const dueDate = new Date(Date.now() + LOAN_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
   const created = loanRepository.create({
     memberId,
     bookId,
     copies,
     borrowedAt,
+    dueDate,
     returnedAt: undefined,
   });
 
@@ -76,7 +81,22 @@ const returnBook = (memberId: string, bookId: string, copies: number): Loan => {
   return updated;
 };
 
+const listOverdueLoans = (): Loan[] => {
+  const allLoans = loanRepository.findAll();
+  const now = Date.now();
+
+  return allLoans.filter((loan) => {
+    if (loan.returnedAt !== undefined) return false;
+
+    const due = Date.parse(loan.dueDate);
+    if (Number.isNaN(due)) return false;
+
+    return due < now;
+  });
+};
+
 export {
   borrowBook,
   returnBook,
+  listOverdueLoans,
 };

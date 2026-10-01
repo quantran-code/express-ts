@@ -27,9 +27,53 @@ const createMember = (input: CreateMemberInput): Member => {
   const created = memberRepository.create({
     name: input.name,
     email: input.email,
+    role: 'member',
+    passwordHash: '',
   });
 
   return created;
+};
+
+const updateMember = (id: string, patch: { name?: string; email?: string }): Member => {
+  const existing = memberRepository.findById(id);
+  if (!existing) {
+    throw new NotFoundError('member not found');
+  }
+
+  const nextName = patch.name !== undefined ? patch.name : existing.name;
+  const nextEmail = patch.email !== undefined ? patch.email : existing.email;
+
+  if (patch.name !== undefined && !isNonEmptyString(patch.name)) {
+    throw new ValidationError('name must be a non-empty string');
+  }
+
+  if (patch.email !== undefined && !isNonEmptyString(patch.email)) {
+    throw new ValidationError('email must be a non-empty string');
+  }
+
+  if (patch.email !== undefined && memberRepository.existsByEmail(nextEmail, id)) {
+    throw new ConflictError('email already exists');
+  }
+
+  const updated = memberRepository.update(id, {
+    name: nextName,
+    email: nextEmail,
+  });
+
+  if (!updated) {
+    throw new NotFoundError('member not found');
+  }
+
+  return updated;
+};
+
+const deleteMember = (id: string): void => {
+  const existing = memberRepository.findById(id);
+  if (!existing) {
+    throw new NotFoundError('member not found');
+  }
+
+  memberRepository.remove(id);
 };
 
 const listMembers = (): Member[] => {
@@ -47,6 +91,8 @@ const getMemberById = (id: string): Member => {
 
 export {
   createMember,
+  updateMember,
+  deleteMember,
   listMembers,
   getMemberById,
 };

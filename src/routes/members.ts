@@ -1,8 +1,11 @@
 import type { Request, Response } from 'express';
 import express from 'express';
-import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from '../errors';
 import { borrowBook, returnBook } from '../services/loanService';
-import { createMember, getMemberById, listMembers } from '../services/memberService';
+import { createMember, deleteMember, getMemberById, listMembers, updateMember } from '../services/memberService';
+
+import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from '../errors';
+
+import { requireRole } from '../middleware/auth';
 
 const membersRouter = express.Router();
 
@@ -14,7 +17,7 @@ const mapError = (err: unknown, res: Response) => {
   return res.status(500).json({ error: 'InternalServerError', message: 'Unexpected error' });
 };
 
-membersRouter.post('/', (req: Request, res: Response) => {
+membersRouter.post('/', requireRole('librarian') as any, (req: Request, res: Response) => {
   try {
     const { name, email } = req.body ?? {};
 
@@ -29,7 +32,7 @@ membersRouter.post('/', (req: Request, res: Response) => {
   }
 });
 
-membersRouter.get('/', (_req: Request, res: Response) => {
+membersRouter.get('/', requireRole('librarian') as any, (_req: Request, res: Response) => {
   try {
     const members = listMembers();
     res.status(200).json(members);
@@ -41,6 +44,12 @@ membersRouter.get('/', (_req: Request, res: Response) => {
 membersRouter.get('/:id', (req: Request, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (req.user?.role === 'member' && req.user.id !== id) {
+      res.status(403).json({ error: 'Forbidden', message: 'Insufficient role' });
+      return;
+    }
+
     const member = getMemberById(id);
     res.status(200).json(member);
   } catch (err) {
@@ -48,12 +57,91 @@ membersRouter.get('/:id', (req: Request, res: Response) => {
   }
 });
 
+membersRouter.put('/:id', requireRole('librarian') as any, (req: Request, res: Response) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { name, email } = req.body ?? {};
+
+    const updated = updateMember(id, { name, email });
+    res.status(200).json(updated);
+  } catch (err) {
+    return mapError(err, res);
+  }
+});
+
+membersRouter.delete('/:id', requireRole('librarian') as any, (req: Request, res: Response) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    deleteMember(id);
+    res.status(204).send();
+  } catch (err) {
+    return mapError(err, res);
+  }
+});
+
+// member self-service update/delete
+membersRouter.put('/:id', (req: any, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid token' });
+      return;
+    }
+
+    if (req.user.role === 'member' && req.user.id !== (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id)) {
+      res.status(403).json({ error: 'Forbidden', message: 'Insufficient role' });
+      return;
+    }
+
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { name, email } = req.body ?? {};
+
+    const updated = updateMember(id, { name, email });
+    res.status(200).json(updated);
+  } catch (err) {
+    return mapError(err, res);
+  }
+});
+
+membersRouter.delete('/:id', (req: any, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid token' });
+      return;
+    }
+
+    if (req.user.role === 'member' && req.user.id !== (Array.isArray(req.params.id) ? req.params.id[0] : req.params.id)) {
+      res.status(403).json({ error: 'Forbidden', message: 'Insufficient role' });
+      return;
+    }
+
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    deleteMember(id);
+    res.status(204).send();
+  } catch (err) {
+    return mapError(err, res);
+  }
+});
+
 // test-only hook
-membersRouter.post('/:memberId/loans', (req: Request, res: Response) => {
+membersRouter.post('/:memberId/loans', (req: any, res: Response) => {
   try {
     const { bookId, copies } = req.body ?? {};
 
-    const memberId = Array.isArray(req.params.memberId) ? req.params.memberId[0] : req.params.memberId;
+    const memberIdFromUrl = Array.isArray(req.params.memberId) ? req.params.memberId[0] : req.params.memberId;
+    const memberId = req.user?.role === 'librarian' ? memberIdFromUrl : req.user?.id;
+
+    if (!memberId) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid token' });
+      return;
+    }
+
+    if (req.user?.role === 'member' && memberIdFromUrl !== memberId) {
+      res.status(403).json({ error: 'Forbidden', message: 'Insufficient role' });
+      return;
+    }
+
     const created = borrowBook(memberId, bookId, copies);
 
     res.status(201).json(created);
@@ -63,11 +151,23 @@ membersRouter.post('/:memberId/loans', (req: Request, res: Response) => {
 });
 
 // test-only hook
-membersRouter.post('/:memberId/returns', (req: Request, res: Response) => {
+membersRouter.post('/:memberId/returns', (req: any, res: Response) => {
   try {
     const { bookId, copies } = req.body ?? {};
 
-    const memberId = Array.isArray(req.params.memberId) ? req.params.memberId[0] : req.params.memberId;
+    const memberIdFromUrl = Array.isArray(req.params.memberId) ? req.params.memberId[0] : req.params.memberId;
+    const memberId = req.user?.role === 'librarian' ? memberIdFromUrl : req.user?.id;
+
+    if (!memberId) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid token' });
+      return;
+    }
+
+    if (req.user?.role === 'member' && memberIdFromUrl !== memberId) {
+      res.status(403).json({ error: 'Forbidden', message: 'Insufficient role' });
+      return;
+    }
+
     const updated = returnBook(memberId, bookId, copies);
 
     res.status(200).json(updated);

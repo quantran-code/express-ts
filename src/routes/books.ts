@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import express from 'express';
+import { requireRole } from '../middleware/auth';
 import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from '../errors';
 import { createBook, deleteBook, getBookById, listBooks, setLoanedCopies, updateBook } from '../services/bookService';
 
@@ -17,7 +18,7 @@ const mapError = (err: unknown, res: Response) => {
   return res.status(500).json({ error: 'InternalServerError', message: 'Unexpected error' });
 };
 
-booksRouter.post('/', (req: Request, res: Response) => {
+booksRouter.post('/', requireRole('librarian'), (req: Request, res: Response) => {
   try {
     const { title, author, isbn, totalCopies } = req.body ?? {};
 
@@ -53,7 +54,7 @@ booksRouter.get('/:id', (req: Request, res: Response) => {
   }
 });
 
-booksRouter.put('/:id', (req: Request, res: Response) => {
+booksRouter.put('/:id', requireRole('librarian'), (req: Request, res: Response) => {
   try {
     const { title, author, totalCopies, availableCopies } = req.body ?? {};
     void availableCopies;
@@ -72,7 +73,7 @@ booksRouter.put('/:id', (req: Request, res: Response) => {
   }
 });
 
-booksRouter.delete('/:id', (req: Request, res: Response) => {
+booksRouter.delete('/:id', requireRole('librarian'), (req: Request, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     deleteBook(id);
@@ -83,7 +84,7 @@ booksRouter.delete('/:id', (req: Request, res: Response) => {
 });
 
 // test-only hook
-booksRouter.patch('/:id/loaned-copies', (req: Request, res: Response) => {
+booksRouter.patch('/:id/loaned-copies', requireRole('librarian'), (req: Request, res: Response) => {
   try {
     const { loanedCopies } = req.body ?? {};
 

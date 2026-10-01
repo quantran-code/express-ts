@@ -5,6 +5,16 @@ import { reset as resetBookRepository } from '../src/repositories/bookRepository
 import { reset as resetMemberRepository } from '../src/repositories/memberRepository';
 import { reset as resetLoanRepository } from '../src/repositories/loanRepository';
 
+const getAuthHeaders = async () => {
+  const adminRes = await request(app)
+    .post('/auth/login')
+    .send({ email: 'librarian@example.com', password: 'librarian-password' });
+
+  return {
+    Authorization: `Bearer ${adminRes.body.token}`,
+  };
+};
+
 const createBookPayload = (overrides?: Partial<{ title: string; author: string; isbn: string; totalCopies: number }>) => {
   return {
     title: 'Clean Code',
@@ -31,12 +41,15 @@ describe('Borrow/Return flow', () => {
   });
 
   it('borrows and decrements book availableCopies; repeat borrow for same member+book returns 422', async () => {
+    const headers = await getAuthHeaders();
+
     const bookRes = await request(app)
       .post('/books')
+      .set(headers)
       .send(createBookPayload({ isbn: 'isbn-loan-1', totalCopies: 2 }));
     expect(bookRes.status).toBe(201);
 
-    const memberRes = await request(app).post('/members').send(createMemberPayload({ email: 'member-loan-1@example.com' }));
+    const memberRes = await request(app).post('/members').set(headers).send(createMemberPayload({ email: 'member-loan-1@example.com' }));
     expect(memberRes.status).toBe(201);
 
     const memberId = memberRes.body.id;
@@ -44,6 +57,7 @@ describe('Borrow/Return flow', () => {
 
     const borrowRes1 = await request(app)
       .post(`/members/${memberId}/loans`)
+      .set(headers)
       .send({ bookId, copies: 1 });
     expect(borrowRes1.status).toBe(201);
     expect(borrowRes1.body.memberId).toBe(memberId);
@@ -58,23 +72,27 @@ describe('Borrow/Return flow', () => {
 
     const borrowRes2 = await request(app)
       .post(`/members/${memberId}/loans`)
+      .set(headers)
       .send({ bookId, copies: 1 });
     expect(borrowRes2.status).toBe(422);
   });
 
   it('returns an active loan and restores book availableCopies; double return returns 422', async () => {
+    const headers = await getAuthHeaders();
+
     const bookRes = await request(app)
       .post('/books')
+      .set(headers)
       .send(createBookPayload({ isbn: 'isbn-return-1', totalCopies: 2 }));
     expect(bookRes.status).toBe(201);
 
-    const memberRes = await request(app).post('/members').send(createMemberPayload({ email: 'member-return-1@example.com' }));
+    const memberRes = await request(app).post('/members').set(headers).send(createMemberPayload({ email: 'member-return-1@example.com' }));
     expect(memberRes.status).toBe(201);
 
     const memberId = memberRes.body.id;
     const bookId = bookRes.body.id;
 
-    const borrowRes = await request(app).post(`/members/${memberId}/loans`).send({ bookId, copies: 1 });
+    const borrowRes = await request(app).post(`/members/${memberId}/loans`).set(headers).send({ bookId, copies: 1 });
     expect(borrowRes.status).toBe(201);
 
     const getBookAfterBorrow = await request(app).get(`/books/${bookId}`);
@@ -82,7 +100,7 @@ describe('Borrow/Return flow', () => {
     expect(getBookAfterBorrow.body.availableCopies).toBe(1);
     expect(getBookAfterBorrow.body.loanedCopies).toBe(1);
 
-    const returnRes = await request(app).post(`/members/${memberId}/returns`).send({ bookId, copies: 1 });
+    const returnRes = await request(app).post(`/members/${memberId}/returns`).set(headers).send({ bookId, copies: 1 });
     expect(returnRes.status).toBe(200);
     expect(returnRes.body.memberId).toBe(memberId);
     expect(returnRes.body.bookId).toBe(bookId);
@@ -99,8 +117,11 @@ describe('Borrow/Return flow', () => {
   });
 
   it('borrowing with a nonexistent member or book returns 404', async () => {
+    const headers = await getAuthHeaders();
+
     const bookRes = await request(app)
       .post('/books')
+      .set(headers)
       .send(createBookPayload({ isbn: 'isbn-loan-404', totalCopies: 2 }));
     expect(bookRes.status).toBe(201);
 
