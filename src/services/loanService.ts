@@ -33,11 +33,14 @@ const borrowBook = (memberId: string, bookId: string, copies: number): Loan => {
 
   const borrowedAt = new Date().toISOString();
 
+  const dueDate = new Date(new Date(borrowedAt).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
   const created = loanRepository.create({
     memberId,
     bookId,
     copies,
     borrowedAt,
+    dueDate,
     returnedAt: undefined,
   });
 
@@ -76,7 +79,27 @@ const returnBook = (memberId: string, bookId: string, copies: number): Loan => {
   return updated;
 };
 
+const listOverdueLoans = (): { items: Loan[]; total: number } => {
+  const now = new Date();
+
+  const all = loanRepository.findAll();
+
+  const overdue = all.filter((loan) => {
+    if (loan.returnedAt !== undefined) {
+      return false;
+    }
+
+    return now.getTime() > new Date(loan.dueDate).getTime();
+  });
+
+  return {
+    items: overdue,
+    total: overdue.length,
+  };
+};
+
 export {
   borrowBook,
   returnBook,
+  listOverdueLoans,
 };

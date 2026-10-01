@@ -32,6 +32,27 @@ const findAll = (): Book[] => {
   return Array.from(books.values());
 };
 
+const search = (params: { query?: string; page: number; pageSize: number }): { items: Book[]; total: number } => {
+  const query = params.query?.trim();
+
+  const all = Array.from(books.values());
+
+  const filtered = query && query.length > 0
+    ? all.filter((book) => {
+        const needle = query.toLowerCase();
+        return book.title.toLowerCase().includes(needle) || book.author.toLowerCase().includes(needle);
+      })
+    : all;
+
+  const total = filtered.length;
+  const start = (params.page - 1) * params.pageSize;
+  const end = start + params.pageSize;
+
+  const items = filtered.slice(start, end);
+
+  return { items, total };
+};
+
 const findById = (id: string): Book | undefined => {
   return books.get(id);
 };
@@ -71,6 +92,7 @@ const reset = (): void => {
 export {
   create,
   findAll,
+  search,
   findById,
   update,
   remove,

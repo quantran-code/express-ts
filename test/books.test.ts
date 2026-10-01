@@ -67,8 +67,8 @@ describe('Book CRUD', () => {
 
     const listRes = await request(app).get('/books');
     expect(listRes.status).toBe(200);
-    expect(Array.isArray(listRes.body)).toBe(true);
-    expect(listRes.body.length).toBe(2);
+    expect(Array.isArray(listRes.body.items)).toBe(true);
+    expect(listRes.body.items.length).toBe(2);
   });
 
   it('gets a book by id (200) and returns 404 when missing', async () => {

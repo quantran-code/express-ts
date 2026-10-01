@@ -4,5 +4,6 @@ export interface Loan {
   bookId: string;
   copies: number;
   borrowedAt: string;
+  dueDate: string;
   returnedAt?: string;
 }

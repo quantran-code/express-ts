@@ -19,6 +19,7 @@ const create = (data: Omit<Loan, 'id'>): Loan => {
     bookId: data.bookId,
     copies: data.copies,
     borrowedAt: data.borrowedAt,
+    dueDate: data.dueDate,
     returnedAt: data.returnedAt,
   };
 

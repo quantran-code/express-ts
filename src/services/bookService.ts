@@ -60,8 +60,36 @@ const createBook = (input: CreateBookInput): Book => {
   return created;
 };
 
-const listBooks = (): Book[] => {
-  return bookRepository.findAll();
+const listBooks = (input?: { query?: string; page?: number; pageSize?: number }): { items: Book[]; totalMatching: number; page: number; pageSize: number } => {
+  const page = input?.page ?? 1;
+  const pageSize = input?.pageSize ?? 10;
+
+  const query = input?.query;
+
+  if (page < 1) {
+    throw new ValidationError('page must be >= 1');
+  }
+
+  if (pageSize < 1) {
+    throw new ValidationError('pageSize must be >= 1');
+  }
+
+  if (pageSize > 50) {
+    throw new ValidationError('pageSize must be <= 50');
+  }
+
+  const { items, total } = bookRepository.search({
+    query,
+    page,
+    pageSize,
+  });
+
+  return {
+    items,
+    totalMatching: total,
+    page,
+    pageSize,
+  };
 };
 
 const getBookById = (id: string): Book => {

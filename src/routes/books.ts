@@ -34,10 +34,20 @@ booksRouter.post('/', (req: Request, res: Response) => {
   }
 });
 
-booksRouter.get('/', (_req: Request, res: Response) => {
+booksRouter.get('/', (req: Request, res: Response) => {
   try {
-    const books = listBooks();
-    res.status(200).json(books);
+    const { query, page, pageSize } = req.query ?? {};
+
+    const parsedPage = page !== undefined ? Number(page) : undefined;
+    const parsedPageSize = pageSize !== undefined ? Number(pageSize) : undefined;
+
+    const result = listBooks({
+      query: typeof query === 'string' ? query : undefined,
+      page: parsedPage,
+      pageSize: parsedPageSize,
+    });
+
+    res.status(200).json(result);
   } catch (err) {
     return mapError(err, res);
   }
