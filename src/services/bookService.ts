@@ -169,6 +169,72 @@ const setLoanedCopies = (id: string, loanedCopies: number): Book => {
   return updated;
 };
 
+const borrowCopies = (bookId: string, copies: number): Book => {
+  const existing = bookRepository.findById(bookId);
+  if (!existing) {
+    throw new NotFoundError('book not found');
+  }
+
+  if (!isInteger(copies)) {
+    throw new ValidationError('copies must be an integer');
+  }
+
+  if (copies <= 0) {
+    throw new ValidationError('copies must be a positive integer');
+  }
+
+  if (copies > existing.availableCopies) {
+    throw new BusinessRuleError('not enough available copies');
+  }
+
+  const availableCopies = existing.availableCopies - copies;
+  const loanedCopies = existing.loanedCopies + copies;
+
+  const updated = bookRepository.update(bookId, {
+    availableCopies,
+    loanedCopies,
+  });
+
+  if (!updated) {
+    throw new NotFoundError('book not found');
+  }
+
+  return updated;
+};
+
+const returnCopies = (bookId: string, copies: number): Book => {
+  const existing = bookRepository.findById(bookId);
+  if (!existing) {
+    throw new NotFoundError('book not found');
+  }
+
+  if (!isInteger(copies)) {
+    throw new ValidationError('copies must be an integer');
+  }
+
+  if (copies <= 0) {
+    throw new ValidationError('copies must be a positive integer');
+  }
+
+  if (copies > existing.loanedCopies) {
+    throw new BusinessRuleError('not enough loaned copies');
+  }
+
+  const availableCopies = existing.availableCopies + copies;
+  const loanedCopies = existing.loanedCopies - copies;
+
+  const updated = bookRepository.update(bookId, {
+    availableCopies,
+    loanedCopies,
+  });
+
+  if (!updated) {
+    throw new NotFoundError('book not found');
+  }
+
+  return updated;
+};
+
 export {
   createBook,
   listBooks,
@@ -176,4 +242,6 @@ export {
   updateBook,
   deleteBook,
   setLoanedCopies,
+  borrowCopies,
+  returnCopies,
 };
