@@ -4,6 +4,7 @@ import app from '../src/app';
 import { resetBookStore, getBook } from '../src/store/books';
 import { resetMemberStore } from '../src/store/members';
 import { resetLoanStore, countActiveLoansForMember } from '../src/store/loans';
+import { loginAsSeededLibrarian } from './helpers/auth';
 
 const validBook = {
   title: 'The Pragmatic Programmer',
@@ -17,16 +18,27 @@ const validMember = {
   email: 'alice@example.com',
 };
 
+let token = '';
+
 function postBook(payload: Record<string, unknown> = validBook) {
-  return request(app).post('/books').send(payload);
+  return request(app)
+    .post('/books')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function postMember(payload: Record<string, unknown> = validMember) {
-  return request(app).post('/members').send(payload);
+  return request(app)
+    .post('/members')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function postLoan(payload: Record<string, unknown>) {
-  return request(app).post('/loans').send(payload);
+  return request(app)
+    .post('/loans')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function expectError(
@@ -51,10 +63,11 @@ async function seedMember(payload: Record<string, unknown> = validMember) {
 }
 
 describe('Loan API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetBookStore();
     resetMemberStore();
     resetLoanStore();
+    token = await loginAsSeededLibrarian();
   });
 
   describe('POST /loans', () => {
@@ -227,7 +240,9 @@ describe('Loan API', () => {
       const loanId = borrow.body.id as number;
       expect(getBook(book.id)!.availableCopies).toBe(validBook.totalCopies - 1);
 
-      const res = await request(app).post(`/loans/${loanId}/return`);
+      const res = await request(app)
+        .post(`/loans/${loanId}/return`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -243,13 +258,17 @@ describe('Loan API', () => {
     });
 
     it('returns 404 for an unknown loan id', async () => {
-      const res = await request(app).post('/loans/999/return');
+      const res = await request(app)
+        .post('/loans/999/return')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'LOAN_NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric loan id', async () => {
       for (const id of ['abc', '1.5', '-1', '0']) {
-        const res = await request(app).post(`/loans/${id}/return`);
+        const res = await request(app)
+          .post(`/loans/${id}/return`)
+          .set('Authorization', `Bearer ${token}`);
         expectError(res, 404, 'LOAN_NOT_FOUND');
       }
     });
@@ -262,10 +281,14 @@ describe('Loan API', () => {
       expect(borrow.status).toBe(201);
       const loanId = borrow.body.id as number;
 
-      const first = await request(app).post(`/loans/${loanId}/return`);
+      const first = await request(app)
+        .post(`/loans/${loanId}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expect(first.status).toBe(200);
 
-      const second = await request(app).post(`/loans/${loanId}/return`);
+      const second = await request(app)
+        .post(`/loans/${loanId}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expectError(second, 404, 'LOAN_NOT_FOUND');
       expect(getBook(book.id)!.availableCopies).toBe(validBook.totalCopies);
     });
@@ -283,7 +306,9 @@ describe('Loan API', () => {
       expect(afterBorrow).toBeGreaterThanOrEqual(0);
       expect(afterBorrow).toBeLessThanOrEqual(getBook(book.id)!.totalCopies);
 
-      const res = await request(app).post(`/loans/${borrow.body.id}/return`);
+      const res = await request(app)
+        .post(`/loans/${borrow.body.id}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
 
       const afterReturn = getBook(book.id)!.availableCopies;
@@ -301,7 +326,9 @@ describe('Loan API', () => {
       const borrow = await postLoan({ bookId: book.id, memberId: member.id });
       expect(borrow.status).toBe(201);
 
-      const res = await request(app).get(`/members/${member.id}/loans`);
+      const res = await request(app)
+        .get(`/members/${member.id}/loans`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
@@ -326,13 +353,17 @@ describe('Loan API', () => {
       const borrow = await postLoan({ bookId: book.id, memberId: member.id });
       expect(borrow.status).toBe(201);
 
-      const before = await request(app).get('/loans/overdue');
+      const before = await request(app)
+        .get('/loans/overdue')
+        .set('Authorization', `Bearer ${token}`);
       expect(before.status).toBe(200);
       expect(before.body).toEqual([]);
 
       vi.setSystemTime(new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000));
 
-      const after = await request(app).get('/loans/overdue');
+      const after = await request(app)
+        .get('/loans/overdue')
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(200);
       expect(after.body).toHaveLength(1);
       expect(after.body[0].id).toBe(borrow.body.id);
@@ -349,12 +380,16 @@ describe('Loan API', () => {
       const borrow = await postLoan({ bookId: book.id, memberId: member.id });
       expect(borrow.status).toBe(201);
 
-      const returned = await request(app).post(`/loans/${borrow.body.id}/return`);
+      const returned = await request(app)
+        .post(`/loans/${borrow.body.id}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expect(returned.status).toBe(200);
 
       vi.setSystemTime(new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000));
 
-      const res = await request(app).get('/loans/overdue');
+      const res = await request(app)
+        .get('/loans/overdue')
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
     });

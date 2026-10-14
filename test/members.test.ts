@@ -4,6 +4,7 @@ import app from '../src/app';
 import { resetBookStore } from '../src/store/books';
 import { resetMemberStore } from '../src/store/members';
 import { resetLoanStore } from '../src/store/loans';
+import { loginAsSeededLibrarian } from './helpers/auth';
 
 const validMember = {
   name: 'Alice Johnson',
@@ -17,16 +18,27 @@ const validBook = {
   totalCopies: 4,
 };
 
+let token = '';
+
 function postMember(payload: Record<string, unknown> = validMember) {
-  return request(app).post('/members').send(payload);
+  return request(app)
+    .post('/members')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function postBook(payload: Record<string, unknown> = validBook) {
-  return request(app).post('/books').send(payload);
+  return request(app)
+    .post('/books')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function postLoan(payload: Record<string, unknown>) {
-  return request(app).post('/loans').send(payload);
+  return request(app)
+    .post('/loans')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function expectError(
@@ -39,10 +51,11 @@ function expectError(
 }
 
 describe('Member API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetBookStore();
     resetMemberStore();
     resetLoanStore();
+    token = await loginAsSeededLibrarian();
   });
 
   describe('POST /members', () => {
@@ -103,7 +116,9 @@ describe('Member API', () => {
 
   describe('GET /members', () => {
     it('returns an empty array when there are no members', async () => {
-      const res = await request(app).get('/members');
+      const res = await request(app)
+        .get('/members')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
@@ -113,7 +128,9 @@ describe('Member API', () => {
       const first = await postMember();
       const second = await postMember({ name: 'Bob Smith', email: 'bob@example.com' });
 
-      const res = await request(app).get('/members');
+      const res = await request(app)
+        .get('/members')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
@@ -125,20 +142,26 @@ describe('Member API', () => {
   describe('GET /members/:id', () => {
     it('returns the member for a known id', async () => {
       const created = await postMember();
-      const res = await request(app).get(`/members/${created.body.id}`);
+      const res = await request(app)
+        .get(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(created.body);
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).get('/members/999');
+      const res = await request(app)
+        .get('/members/999')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
       for (const id of ['abc', '1.5', '-1', '0']) {
-        const res = await request(app).get(`/members/${id}`);
+        const res = await request(app)
+          .get(`/members/${id}`)
+          .set('Authorization', `Bearer ${token}`);
         expectError(res, 404, 'NOT_FOUND');
       }
     });
@@ -149,6 +172,7 @@ describe('Member API', () => {
       const created = await postMember();
       const res = await request(app)
         .put(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ name: 'Updated Name' });
 
       expect(res.status).toBe(200);
@@ -159,6 +183,7 @@ describe('Member API', () => {
       const created = await postMember();
       const res = await request(app)
         .patch(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ email: 'new@example.com' });
 
       expect(res.status).toBe(200);
@@ -171,6 +196,7 @@ describe('Member API', () => {
 
       const res = await request(app)
         .put(`/members/${second.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ email: validMember.email });
 
       expect(first.status).toBe(201);
@@ -181,6 +207,7 @@ describe('Member API', () => {
       const created = await postMember();
       const res = await request(app)
         .patch(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ email: '  Alice@Example.com  ' });
 
       expect(res.status).toBe(200);
@@ -191,6 +218,7 @@ describe('Member API', () => {
       const created = await postMember();
       const res = await request(app)
         .patch(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({});
 
       expectError(res, 400, 'INVALID_FIELDS');
@@ -200,18 +228,25 @@ describe('Member API', () => {
       const created = await postMember();
       const res = await request(app)
         .patch(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ id: 99 });
 
       expectError(res, 400, 'INVALID_FIELDS');
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).put('/members/999').send({ name: 'Nope' });
+      const res = await request(app)
+        .put('/members/999')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nope' });
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
-      const res = await request(app).put('/members/abc').send({ name: 'Nope' });
+      const res = await request(app)
+        .put('/members/abc')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nope' });
       expectError(res, 404, 'NOT_FOUND');
     });
   });
@@ -219,12 +254,16 @@ describe('Member API', () => {
   describe('DELETE /members/:id', () => {
     it('deletes a member when they have no active loans', async () => {
       const created = await postMember();
-      const res = await request(app).delete(`/members/${created.body.id}`);
+      const res = await request(app)
+        .delete(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(created.body);
 
-      const after = await request(app).get(`/members/${created.body.id}`);
+      const after = await request(app)
+        .get(`/members/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(404);
     });
 
@@ -235,10 +274,14 @@ describe('Member API', () => {
       const loan = await postLoan({ bookId: book.body.id, memberId: member.body.id });
       expect(loan.status).toBe(201);
 
-      const res = await request(app).delete(`/members/${member.body.id}`);
+      const res = await request(app)
+        .delete(`/members/${member.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 422, 'MEMBER_HAS_ACTIVE_LOANS');
 
-      const after = await request(app).get(`/members/${member.body.id}`);
+      const after = await request(app)
+        .get(`/members/${member.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(200);
       expect(after.body).toEqual(member.body);
     });
@@ -250,24 +293,34 @@ describe('Member API', () => {
       const loan = await postLoan({ bookId: book.body.id, memberId: member.body.id });
       expect(loan.status).toBe(201);
 
-      const returned = await request(app).post(`/loans/${loan.body.id}/return`);
+      const returned = await request(app)
+        .post(`/loans/${loan.body.id}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expect(returned.status).toBe(200);
 
-      const res = await request(app).delete(`/members/${member.body.id}`);
+      const res = await request(app)
+        .delete(`/members/${member.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect(res.body).toEqual(member.body);
 
-      const after = await request(app).get(`/members/${member.body.id}`);
+      const after = await request(app)
+        .get(`/members/${member.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(404);
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).delete('/members/999');
+      const res = await request(app)
+        .delete('/members/999')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
-      const res = await request(app).delete('/members/abc');
+      const res = await request(app)
+        .delete('/members/abc')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
   });
@@ -276,7 +329,9 @@ describe('Member API', () => {
     it('returns an empty array when the member has no loans', async () => {
       const created = await postMember();
 
-      const res = await request(app).get(`/members/${created.body.id}/loans`);
+      const res = await request(app)
+        .get(`/members/${created.body.id}/loans`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
@@ -297,7 +352,9 @@ describe('Member API', () => {
       expect(second.status).toBe(201);
       expect(other.status).toBe(201);
 
-      const res = await request(app).get(`/members/${member.body.id}/loans`);
+      const res = await request(app)
+        .get(`/members/${member.body.id}/loans`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
@@ -321,10 +378,14 @@ describe('Member API', () => {
       expect(first.status).toBe(201);
       expect(second.status).toBe(201);
 
-      const returned = await request(app).post(`/loans/${first.body.id}/return`);
+      const returned = await request(app)
+        .post(`/loans/${first.body.id}/return`)
+        .set('Authorization', `Bearer ${token}`);
       expect(returned.status).toBe(200);
 
-      const res = await request(app).get(`/members/${member.body.id}/loans`);
+      const res = await request(app)
+        .get(`/members/${member.body.id}/loans`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
@@ -333,13 +394,17 @@ describe('Member API', () => {
     });
 
     it('returns 404 for an unknown member id', async () => {
-      const res = await request(app).get('/members/999/loans');
+      const res = await request(app)
+        .get('/members/999/loans')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric member id', async () => {
       for (const id of ['abc', '1.5', '-1', '0']) {
-        const res = await request(app).get(`/members/${id}/loans`);
+        const res = await request(app)
+          .get(`/members/${id}/loans`)
+          .set('Authorization', `Bearer ${token}`);
         expectError(res, 404, 'NOT_FOUND');
       }
     });

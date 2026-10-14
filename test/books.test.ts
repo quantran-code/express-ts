@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../src/app';
 import { resetBookStore, getBook } from '../src/store/books';
+import { loginAsSeededLibrarian } from './helpers/auth';
 
 const validBook = {
   title: 'The Pragmatic Programmer',
@@ -10,8 +11,13 @@ const validBook = {
   totalCopies: 4,
 };
 
+let token = '';
+
 function postBook(payload: Record<string, unknown> = validBook) {
-  return request(app).post('/books').send(payload);
+  return request(app)
+    .post('/books')
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload);
 }
 
 function expectError(
@@ -29,8 +35,9 @@ function expectValidCopies(book: { totalCopies: number; availableCopies: number 
 }
 
 describe('Book API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetBookStore();
+    token = await loginAsSeededLibrarian();
   });
 
   describe('POST /books', () => {
@@ -114,7 +121,9 @@ describe('Book API', () => {
 
   describe('GET /books', () => {
     it('returns an empty array when the catalog is empty', async () => {
-      const res = await request(app).get('/books');
+      const res = await request(app)
+        .get('/books')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
@@ -128,7 +137,9 @@ describe('Book API', () => {
         isbn: '978-0134757599',
       });
 
-      const res = await request(app).get('/books');
+      const res = await request(app)
+        .get('/books')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
@@ -147,7 +158,9 @@ describe('Book API', () => {
         isbn: '978-0134757599',
       });
 
-      const res = await request(app).get('/books?q=PROGR');
+      const res = await request(app)
+        .get('/books?q=PROGR')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -167,7 +180,9 @@ describe('Book API', () => {
         isbn: '978-0134757599',
       });
 
-      const res = await request(app).get('/books?q=fowl');
+      const res = await request(app)
+        .get('/books?q=fowl')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -191,7 +206,9 @@ describe('Book API', () => {
         isbn: '978-0132350884',
       });
 
-      const res = await request(app).get('/books?page=2&pageSize=2');
+      const res = await request(app)
+        .get('/books?page=2&pageSize=2')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -216,7 +233,9 @@ describe('Book API', () => {
         isbn: '978-0132350884',
       });
 
-      const res = await request(app).get('/books?q=progr&page=2&pageSize=1');
+      const res = await request(app)
+        .get('/books?q=progr&page=2&pageSize=1')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -237,7 +256,9 @@ describe('Book API', () => {
         'pageSize=1.5',
         'pageSize=101',
       ]) {
-        const res = await request(app).get(`/books?${query}`);
+        const res = await request(app)
+          .get(`/books?${query}`)
+          .set('Authorization', `Bearer ${token}`);
         expectError(res, 400, 'INVALID_FIELDS');
       }
     });
@@ -245,7 +266,9 @@ describe('Book API', () => {
     it('accepts the maximum pageSize of 100', async () => {
       const created = await postBook();
 
-      const res = await request(app).get('/books?pageSize=100');
+      const res = await request(app)
+        .get('/books?pageSize=100')
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -260,7 +283,9 @@ describe('Book API', () => {
   describe('GET /books/:id', () => {
     it('returns the book for a known id', async () => {
       const created = await postBook();
-      const res = await request(app).get(`/books/${created.body.id}`);
+      const res = await request(app)
+        .get(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(created.body);
@@ -268,13 +293,17 @@ describe('Book API', () => {
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).get('/books/999');
+      const res = await request(app)
+        .get('/books/999')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
       for (const id of ['abc', '1.5', '-1', '0']) {
-        const res = await request(app).get(`/books/${id}`);
+        const res = await request(app)
+          .get(`/books/${id}`)
+          .set('Authorization', `Bearer ${token}`);
         expectError(res, 404, 'NOT_FOUND');
       }
     });
@@ -285,6 +314,7 @@ describe('Book API', () => {
       const created = await postBook();
       const res = await request(app)
         .put(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ title: 'Updated Title' });
 
       expect(res.status).toBe(200);
@@ -296,6 +326,7 @@ describe('Book API', () => {
       const created = await postBook();
       const res = await request(app)
         .patch(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ author: 'New Author' });
 
       expect(res.status).toBe(200);
@@ -309,6 +340,7 @@ describe('Book API', () => {
 
       const res = await request(app)
         .put(`/books/${second.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ isbn: validBook.isbn });
 
       expect(first.status).toBe(201);
@@ -325,6 +357,7 @@ describe('Book API', () => {
 
       const res = await request(app)
         .put(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ totalCopies: 7 });
 
       expect(res.status).toBe(200);
@@ -344,6 +377,7 @@ describe('Book API', () => {
 
       const res = await request(app)
         .put(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ totalCopies: 1 });
 
       expectError(res, 422, 'INVENTORY_CONFLICT');
@@ -353,6 +387,7 @@ describe('Book API', () => {
       const created = await postBook();
       const res = await request(app)
         .patch(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({ availableCopies: 0 });
 
       expectError(res, 400, 'INVALID_FIELDS');
@@ -362,18 +397,25 @@ describe('Book API', () => {
       const created = await postBook();
       const res = await request(app)
         .patch(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
         .send({});
 
       expectError(res, 400, 'INVALID_FIELDS');
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).put('/books/999').send({ title: 'Nope' });
+      const res = await request(app)
+        .put('/books/999')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'Nope' });
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
-      const res = await request(app).put('/books/abc').send({ title: 'Nope' });
+      const res = await request(app)
+        .put('/books/abc')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: 'Nope' });
       expectError(res, 404, 'NOT_FOUND');
     });
   });
@@ -381,13 +423,17 @@ describe('Book API', () => {
   describe('DELETE /books/:id', () => {
     it('deletes a book when no copies are on loan', async () => {
       const created = await postBook();
-      const res = await request(app).delete(`/books/${created.body.id}`);
+      const res = await request(app)
+        .delete(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(created.body);
       expectValidCopies(res.body);
 
-      const after = await request(app).get(`/books/${created.body.id}`);
+      const after = await request(app)
+        .get(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(404);
     });
 
@@ -399,20 +445,28 @@ describe('Book API', () => {
       // One copy is on loan.
       stored!.availableCopies = 2;
 
-      const res = await request(app).delete(`/books/${created.body.id}`);
+      const res = await request(app)
+        .delete(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 422, 'INVENTORY_CONFLICT');
 
-      const after = await request(app).get(`/books/${created.body.id}`);
+      const after = await request(app)
+        .get(`/books/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`);
       expect(after.status).toBe(200);
     });
 
     it('returns 404 for an unknown id', async () => {
-      const res = await request(app).delete('/books/999');
+      const res = await request(app)
+        .delete('/books/999')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
 
     it('returns 404 for a non-numeric id', async () => {
-      const res = await request(app).delete('/books/abc');
+      const res = await request(app)
+        .delete('/books/abc')
+        .set('Authorization', `Bearer ${token}`);
       expectError(res, 404, 'NOT_FOUND');
     });
   });
