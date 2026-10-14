@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { borrowBook, returnBook, listOverdueLoans } from '../store/loans';
 import type { LoanResult, LoanErrorCode } from '../store/loans';
+import { findMemberByEmail } from '../store/members';
+import { requireRole } from '../auth/middleware';
+import type { AuthContext } from '../auth/types';
 
 const router = Router();
 
@@ -29,11 +32,29 @@ function sendResult(res: Response, result: LoanResult, successStatus: number): v
   res.status(STATUS_BY_CODE[result.error.code]).json({ error: result.error });
 }
 
-router.post('/', (req: Request, res: Response) => {
-  sendResult(res, borrowBook(req.body), 201);
-});
+function borrowHandler(req: Request, res: Response): void {
+  const auth = res.locals.auth as AuthContext;
 
-router.post('/:id/return', (req: Request, res: Response) => {
+  if (auth.role === 'librarian') {
+    sendResult(res, borrowBook(req.body), 201);
+    return;
+  }
+
+  const member = findMemberByEmail(auth.email);
+  if (!member) {
+    res.status(404).json({
+      error: {
+        code: 'NOT_FOUND',
+        message: `Member with email "${auth.email}" not found.`,
+      },
+    });
+    return;
+  }
+
+  sendResult(res, borrowBook(req.body, member.id), 201);
+}
+
+function returnHandler(req: Request, res: Response): void {
   const id = parseId(req.params.id);
   if (id === null) {
     res.status(404).json({
@@ -45,10 +66,32 @@ router.post('/:id/return', (req: Request, res: Response) => {
     return;
   }
 
-  sendResult(res, returnBook(id), 200);
-});
+  const auth = res.locals.auth as AuthContext;
 
-router.get('/overdue', (_req: Request, res: Response) => {
+  if (auth.role === 'librarian') {
+    sendResult(res, returnBook(id), 200);
+    return;
+  }
+
+  const member = findMemberByEmail(auth.email);
+  if (!member) {
+    res.status(404).json({
+      error: {
+        code: 'LOAN_NOT_FOUND',
+        message: `Loan with id ${id} not found or already returned.`,
+      },
+    });
+    return;
+  }
+
+  sendResult(res, returnBook(id, member.id), 200);
+}
+
+router.post('/', borrowHandler);
+
+router.post('/:id/return', returnHandler);
+
+router.get('/overdue', requireRole('librarian'), (_req: Request, res: Response) => {
   res.status(200).json(listOverdueLoans());
 });
 

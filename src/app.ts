@@ -3,6 +3,7 @@ import authRouter from './routes/auth';
 import booksRouter from './routes/books';
 import membersRouter from './routes/members';
 import loansRouter from './routes/loans';
+import reportsRouter from './routes/reports';
 import { requireAuth } from './auth/middleware';
 
 const app: Application = express();
@@ -17,5 +18,6 @@ app.use('/auth', authRouter);
 app.use('/books', requireAuth, booksRouter);
 app.use('/members', requireAuth, membersRouter);
 app.use('/loans', requireAuth, loansRouter);
+app.use('/reports', requireAuth, reportsRouter);
 
 export default app;

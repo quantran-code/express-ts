@@ -3,11 +3,14 @@ import {
   createMember,
   listMembers,
   getMember,
+  findMemberByEmail,
   updateMember,
   deleteMember,
 } from '../store/members';
 import { hasActiveLoansForMember, listActiveLoansForMember } from '../store/loans';
 import type { MemberResult, MemberErrorCode } from '../store/members';
+import { requireRole } from '../auth/middleware';
+import type { AuthContext } from '../auth/types';
 
 const router = Router();
 
@@ -38,6 +41,15 @@ function sendResult(res: Response, result: MemberResult, successStatus: number):
   res.status(STATUS_BY_CODE[result.error.code]).json({ error: result.error });
 }
 
+function isOwnMember(auth: AuthContext, id: number): boolean {
+  if (auth.role === 'librarian') {
+    return true;
+  }
+
+  const member = findMemberByEmail(auth.email);
+  return member !== undefined && member.id === id;
+}
+
 function updateHandler(req: Request, res: Response): void {
   const id = parseId(req.params.id);
   if (id === null) {
@@ -48,11 +60,11 @@ function updateHandler(req: Request, res: Response): void {
   sendResult(res, updateMember(id, req.body), 200);
 }
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('librarian'), (req: Request, res: Response) => {
   sendResult(res, createMember(req.body), 201);
 });
 
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', requireRole('librarian'), (_req: Request, res: Response) => {
   res.status(200).json(listMembers());
 });
 
@@ -60,6 +72,12 @@ router.get('/:id', (req: Request, res: Response) => {
   const id = parseId(req.params.id);
   if (id === null) {
     notFoundResponse(res, `Member id "${req.params.id}" is not valid.`);
+    return;
+  }
+
+  const auth = res.locals.auth as AuthContext;
+  if (!isOwnMember(auth, id)) {
+    notFoundResponse(res, `Member with id ${id} not found.`);
     return;
   }
 
@@ -79,6 +97,12 @@ router.get('/:id/loans', (req: Request, res: Response) => {
     return;
   }
 
+  const auth = res.locals.auth as AuthContext;
+  if (!isOwnMember(auth, id)) {
+    notFoundResponse(res, `Member with id ${id} not found.`);
+    return;
+  }
+
   const member = getMember(id);
   if (!member) {
     notFoundResponse(res, `Member with id ${id} not found.`);
@@ -88,10 +112,10 @@ router.get('/:id/loans', (req: Request, res: Response) => {
   res.status(200).json(listActiveLoansForMember(id));
 });
 
-router.put('/:id', updateHandler);
-router.patch('/:id', updateHandler);
+router.put('/:id', requireRole('librarian'), updateHandler);
+router.patch('/:id', requireRole('librarian'), updateHandler);
 
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('librarian'), (req: Request, res: Response) => {
   const id = parseId(req.params.id);
   if (id === null) {
     notFoundResponse(res, `Member id "${req.params.id}" is not valid.`);

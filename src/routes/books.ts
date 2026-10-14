@@ -8,6 +8,7 @@ import {
   deleteBook,
 } from '../store/books';
 import type { BookResult, BookErrorCode } from '../store/books';
+import { requireRole } from '../auth/middleware';
 
 const router = Router();
 
@@ -59,7 +60,7 @@ function updateHandler(req: Request, res: Response): void {
   sendResult(res, updateBook(id, req.body), 200);
 }
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('librarian'), (req: Request, res: Response) => {
   sendResult(res, createBook(req.body), 201);
 });
 
@@ -126,10 +127,10 @@ router.get('/:id', (req: Request, res: Response) => {
   res.status(200).json(book);
 });
 
-router.put('/:id', updateHandler);
-router.patch('/:id', updateHandler);
+router.put('/:id', requireRole('librarian'), updateHandler);
+router.patch('/:id', requireRole('librarian'), updateHandler);
 
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('librarian'), (req: Request, res: Response) => {
   const id = parseId(req.params.id);
   if (id === null) {
     notFoundResponse(res, `Book id "${req.params.id}" is not valid.`);

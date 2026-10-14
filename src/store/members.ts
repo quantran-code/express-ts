@@ -111,6 +111,11 @@ export function getMember(id: number): Member | undefined {
   return members.find((member) => member.id === id);
 }
 
+export function findMemberByEmail(email: string): Member | undefined {
+  const normalized = normalizeEmail(email);
+  return members.find((member) => normalizeEmail(member.email) === normalized);
+}
+
 export function updateMember(id: number, patch: unknown): MemberResult {
   const index = members.findIndex((member) => member.id === id);
   if (index === -1) {

@@ -73,7 +73,7 @@ export function hasActiveLoansForMember(memberId: number): boolean {
   return countActiveLoansForMember(memberId) > 0;
 }
 
-export function borrowBook(input: unknown): LoanResult {
+export function borrowBook(input: unknown, authenticatedMemberId?: number): LoanResult {
   if (!isRecord(input)) {
     return invalidFields('Loan data must be an object.');
   }
@@ -83,13 +83,20 @@ export function borrowBook(input: unknown): LoanResult {
     return disallowed;
   }
 
-  const { bookId, memberId } = input;
+  const { bookId, memberId: inputMemberId } = input;
 
   if (!isPositiveInteger(bookId)) {
     return invalidFields('bookId is required and must be an integer greater than 0.');
   }
-  if (!isPositiveInteger(memberId)) {
-    return invalidFields('memberId is required and must be an integer greater than 0.');
+
+  let memberId: number;
+  if (authenticatedMemberId !== undefined) {
+    memberId = authenticatedMemberId;
+  } else {
+    if (!isPositiveInteger(inputMemberId)) {
+      return invalidFields('memberId is required and must be an integer greater than 0.');
+    }
+    memberId = inputMemberId;
   }
 
   const book = getBook(bookId);
@@ -150,16 +157,24 @@ export function borrowBook(input: unknown): LoanResult {
   return { ok: true, loan };
 }
 
-export function returnBook(id: number): LoanResult {
+function loanNotFound(id: number): LoanResult {
+  return {
+    ok: false,
+    error: {
+      code: 'LOAN_NOT_FOUND',
+      message: `Loan with id ${id} not found or already returned.`,
+    },
+  };
+}
+
+export function returnBook(id: number, authenticatedMemberId?: number): LoanResult {
   const loan = loans.find((candidate) => candidate.id === id);
   if (!loan || loan.returnedAt !== null) {
-    return {
-      ok: false,
-      error: {
-        code: 'LOAN_NOT_FOUND',
-        message: `Loan with id ${id} not found or already returned.`,
-      },
-    };
+    return loanNotFound(id);
+  }
+
+  if (authenticatedMemberId !== undefined && loan.memberId !== authenticatedMemberId) {
+    return loanNotFound(id);
   }
 
   loan.returnedAt = new Date().toISOString();
@@ -180,6 +195,10 @@ export function listOverdueLoans(): Loan[] {
   return loans.filter(
     (loan) => loan.returnedAt === null && Date.now() > Date.parse(loan.dueDate),
   );
+}
+
+export function listAllLoans(): Loan[] {
+  return [...loans];
 }
 
 export function resetLoanStore(): void {

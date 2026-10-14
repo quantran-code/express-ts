@@ -42,7 +42,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
-  const auth: AuthContext = { userId, role: user.role };
+  const auth: AuthContext = { userId, email: user.email, role: user.role };
   res.locals.auth = auth;
   next();
 }
