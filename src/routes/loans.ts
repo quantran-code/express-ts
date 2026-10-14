@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { borrowBook, returnBook } from '../store/loans';
+import { borrowBook, returnBook, listOverdueLoans } from '../store/loans';
 import type { LoanResult, LoanErrorCode } from '../store/loans';
 
 const router = Router();
@@ -46,6 +46,10 @@ router.post('/:id/return', (req: Request, res: Response) => {
   }
 
   sendResult(res, returnBook(id), 200);
+});
+
+router.get('/overdue', (_req: Request, res: Response) => {
+  res.status(200).json(listOverdueLoans());
 });
 
 export default router;

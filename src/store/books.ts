@@ -115,8 +115,44 @@ export function createBook(input: unknown): BookResult {
   return { ok: true, book };
 }
 
+export interface BookSearchOptions {
+  q?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface BookSearchPage {
+  data: Book[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export function listBooks(): Book[] {
   return [...books];
+}
+
+export function searchBooks(options: BookSearchOptions): BookSearchPage {
+  const query = options.q?.trim().toLowerCase();
+
+  const matches = query
+    ? books.filter(
+        (book) =>
+          book.title.toLowerCase().includes(query) ||
+          book.author.toLowerCase().includes(query),
+      )
+    : [...books];
+
+  const total = matches.length;
+  const start = (options.page - 1) * options.pageSize;
+  const data = matches.slice(start, start + options.pageSize);
+
+  return {
+    data,
+    total,
+    page: options.page,
+    pageSize: options.pageSize,
+  };
 }
 
 export function getBook(id: number): Book | undefined {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../src/app';
 import { resetBookStore, getBook } from '../src/store/books';
@@ -70,6 +70,7 @@ describe('Loan API', () => {
         bookId: book.id,
         memberId: member.id,
         borrowedAt: expect.any(String),
+        dueDate: expect.any(String),
         returnedAt: null,
       });
       expect(res.body.borrowedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -189,6 +190,31 @@ describe('Loan API', () => {
 
       expectError(res, 400, 'INVALID_FIELDS');
     });
+
+    it('sets dueDate exactly 14 days after borrowedAt', async () => {
+      const book = await seedBook();
+      const member = await seedMember();
+
+      const res = await postLoan({ bookId: book.id, memberId: member.id });
+
+      expect(res.status).toBe(201);
+      const borrowedAt = Date.parse(res.body.borrowedAt as string);
+      const dueDate = Date.parse(res.body.dueDate as string);
+      expect(dueDate - borrowedAt).toBe(14 * 24 * 60 * 60 * 1000);
+    });
+
+    it('rejects a payload that sets dueDate directly', async () => {
+      const book = await seedBook();
+      const member = await seedMember();
+
+      const res = await postLoan({
+        bookId: book.id,
+        memberId: member.id,
+        dueDate: '2025-01-01T00:00:00.000Z',
+      });
+
+      expectError(res, 400, 'INVALID_FIELDS');
+    });
   });
 
   describe('POST /loans/:id/return', () => {
@@ -209,6 +235,7 @@ describe('Loan API', () => {
         bookId: book.id,
         memberId: member.id,
         borrowedAt: expect.any(String),
+        dueDate: expect.any(String),
         returnedAt: expect.any(String),
       });
       expect(res.body.returnedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -263,6 +290,73 @@ describe('Loan API', () => {
       expect(afterReturn).toBe(initialAvailable);
       expect(afterReturn).toBeGreaterThanOrEqual(0);
       expect(afterReturn).toBeLessThanOrEqual(getBook(book.id)!.totalCopies);
+    });
+  });
+
+  describe('GET /members/:id/loans includes dueDate', () => {
+    it('returns each active loan with its system-set dueDate', async () => {
+      const member = await seedMember();
+      const book = await seedBook();
+
+      const borrow = await postLoan({ bookId: book.id, memberId: member.id });
+      expect(borrow.status).toBe(201);
+
+      const res = await request(app).get(`/members/${member.id}/loans`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].dueDate).toBe(borrow.body.dueDate);
+      expect(res.body[0].dueDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+  });
+
+  describe('GET /loans/overdue', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('moves an active loan from not overdue to overdue as time passes its dueDate', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const now = new Date('2025-01-01T00:00:00.000Z');
+      vi.setSystemTime(now);
+
+      const book = await seedBook();
+      const member = await seedMember();
+
+      const borrow = await postLoan({ bookId: book.id, memberId: member.id });
+      expect(borrow.status).toBe(201);
+
+      const before = await request(app).get('/loans/overdue');
+      expect(before.status).toBe(200);
+      expect(before.body).toEqual([]);
+
+      vi.setSystemTime(new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000));
+
+      const after = await request(app).get('/loans/overdue');
+      expect(after.status).toBe(200);
+      expect(after.body).toHaveLength(1);
+      expect(after.body[0].id).toBe(borrow.body.id);
+    });
+
+    it('never includes a returned loan even when its dueDate has passed', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const now = new Date('2025-01-01T00:00:00.000Z');
+      vi.setSystemTime(now);
+
+      const book = await seedBook();
+      const member = await seedMember();
+
+      const borrow = await postLoan({ bookId: book.id, memberId: member.id });
+      expect(borrow.status).toBe(201);
+
+      const returned = await request(app).post(`/loans/${borrow.body.id}/return`);
+      expect(returned.status).toBe(200);
+
+      vi.setSystemTime(new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000));
+
+      const res = await request(app).get('/loans/overdue');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
     });
   });
 });

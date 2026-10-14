@@ -138,6 +138,123 @@ describe('Book API', () => {
         expectValidCopies(book);
       }
     });
+
+    it('searches by title with case-insensitive partial matching', async () => {
+      const created = await postBook();
+      await postBook({
+        ...validBook,
+        title: 'Refactoring',
+        isbn: '978-0134757599',
+      });
+
+      const res = await request(app).get('/books?q=PROGR');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [created.body],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+      });
+    });
+
+    it('searches by author with case-insensitive partial matching', async () => {
+      await postBook();
+      const fowler = await postBook({
+        ...validBook,
+        title: 'Refactoring',
+        author: 'Martin Fowler',
+        isbn: '978-0134757599',
+      });
+
+      const res = await request(app).get('/books?q=fowl');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [fowler.body],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+      });
+    });
+
+    it('returns the requested page and total in the paginated object shape', async () => {
+      await postBook();
+      await postBook({
+        ...validBook,
+        title: 'Refactoring',
+        isbn: '978-0134757599',
+      });
+      const third = await postBook({
+        ...validBook,
+        title: 'Clean Code',
+        isbn: '978-0132350884',
+      });
+
+      const res = await request(app).get('/books?page=2&pageSize=2');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [third.body],
+        total: 3,
+        page: 2,
+        pageSize: 2,
+      });
+    });
+
+    it('applies the search filter before paginating', async () => {
+      await postBook();
+      await postBook({
+        ...validBook,
+        title: 'Refactoring',
+        author: 'Martin Fowler',
+        isbn: '978-0134757599',
+      });
+      const secondMatch = await postBook({
+        ...validBook,
+        title: 'Programming Pearls',
+        isbn: '978-0132350884',
+      });
+
+      const res = await request(app).get('/books?q=progr&page=2&pageSize=1');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [secondMatch.body],
+        total: 2,
+        page: 2,
+        pageSize: 1,
+      });
+    });
+
+    it('rejects invalid pagination input', async () => {
+      for (const query of [
+        'page=0',
+        'page=-1',
+        'page=1.5',
+        'page=abc',
+        'pageSize=0',
+        'pageSize=1.5',
+        'pageSize=101',
+      ]) {
+        const res = await request(app).get(`/books?${query}`);
+        expectError(res, 400, 'INVALID_FIELDS');
+      }
+    });
+
+    it('accepts the maximum pageSize of 100', async () => {
+      const created = await postBook();
+
+      const res = await request(app).get('/books?pageSize=100');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [created.body],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+      });
+    });
   });
 
   describe('GET /books/:id', () => {

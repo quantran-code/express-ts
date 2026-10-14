@@ -6,6 +6,7 @@ export interface Loan {
   bookId: number;
   memberId: number;
   borrowedAt: string;
+  dueDate: string;
   returnedAt: string | null;
 }
 
@@ -33,6 +34,12 @@ export type LoanResult =
 
 const INPUT_KEYS = ['bookId', 'memberId'];
 const MAX_ACTIVE_LOANS = 3;
+
+export const LOAN_PERIOD_DAYS = 14;
+
+export function calculateDueDate(borrowedAt: string): string {
+  return new Date(Date.parse(borrowedAt) + LOAN_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
 
 let loans: Loan[] = [];
 let nextId = 1;
@@ -125,11 +132,14 @@ export function borrowBook(input: unknown): LoanResult {
     };
   }
 
+  const borrowedAt = new Date().toISOString();
+
   const loan: Loan = {
     id: nextId,
     bookId,
     memberId,
-    borrowedAt: new Date().toISOString(),
+    borrowedAt,
+    dueDate: calculateDueDate(borrowedAt),
     returnedAt: null,
   };
 
@@ -164,6 +174,12 @@ export function returnBook(id: number): LoanResult {
 
 export function listActiveLoansForMember(memberId: number): Loan[] {
   return loans.filter((loan) => loan.memberId === memberId && loan.returnedAt === null);
+}
+
+export function listOverdueLoans(): Loan[] {
+  return loans.filter(
+    (loan) => loan.returnedAt === null && Date.now() > Date.parse(loan.dueDate),
+  );
 }
 
 export function resetLoanStore(): void {

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   createBook,
   listBooks,
+  searchBooks,
   getBook,
   updateBook,
   deleteBook,
@@ -22,6 +23,17 @@ function parseId(raw: unknown): number | null {
     return null;
   }
   return Number(raw);
+}
+
+function parsePositiveInteger(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw)) {
+    return null;
+  }
+  return Number(raw);
+}
+
+function invalidFieldsResponse(res: Response, message: string): void {
+  res.status(400).json({ error: { code: 'INVALID_FIELDS', message } });
 }
 
 function notFoundResponse(res: Response, message: string): void {
@@ -51,8 +63,51 @@ router.post('/', (req: Request, res: Response) => {
   sendResult(res, createBook(req.body), 201);
 });
 
-router.get('/', (_req: Request, res: Response) => {
-  res.status(200).json(listBooks());
+router.get('/', (req: Request, res: Response) => {
+  const hasSearchOrPagination =
+    'q' in req.query || 'page' in req.query || 'pageSize' in req.query;
+
+  if (!hasSearchOrPagination) {
+    res.status(200).json(listBooks());
+    return;
+  }
+
+  const { q } = req.query;
+
+  let query: string | undefined;
+  if (q !== undefined) {
+    if (typeof q !== 'string') {
+      invalidFieldsResponse(res, 'q must be a string.');
+      return;
+    }
+    query = q;
+  }
+
+  let page = 1;
+  if (req.query.page !== undefined) {
+    const parsed = parsePositiveInteger(req.query.page);
+    if (parsed === null) {
+      invalidFieldsResponse(res, 'page must be an integer greater than 0.');
+      return;
+    }
+    page = parsed;
+  }
+
+  let pageSize = 10;
+  if (req.query.pageSize !== undefined) {
+    const parsed = parsePositiveInteger(req.query.pageSize);
+    if (parsed === null) {
+      invalidFieldsResponse(res, 'pageSize must be an integer greater than 0.');
+      return;
+    }
+    if (parsed > 100) {
+      invalidFieldsResponse(res, 'pageSize must not exceed 100.');
+      return;
+    }
+    pageSize = parsed;
+  }
+
+  res.status(200).json(searchBooks({ q: query, page, pageSize }));
 });
 
 router.get('/:id', (req: Request, res: Response) => {
