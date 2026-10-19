@@ -3,6 +3,7 @@ import request from 'supertest';
 import app from '../src/app';
 import type { Book } from '../src/books/types';
 import { resetBooks } from '../src/books/store';
+import { librarianAuthHeaders } from './helpers/auth';
 
 const validBook = {
   title: 'Dune',
@@ -16,8 +17,11 @@ const validBook = {
  */
 let isbnSuffix = 0;
 
-beforeEach(() => {
+let authHeader: { Authorization: string };
+
+beforeEach(async () => {
   resetBooks();
+  authHeader = await librarianAuthHeaders();
 });
 
 async function createTestBook(overrides: Partial<typeof validBook> = {}): Promise<Book> {
@@ -25,6 +29,7 @@ async function createTestBook(overrides: Partial<typeof validBook> = {}): Promis
 
   const res = await request(app)
     .post('/books')
+    .set(authHeader)
     .send({
       ...validBook,
       isbn: `978-0-441-1727-${isbnSuffix}`,
@@ -40,7 +45,7 @@ describe('GET /books?q=', () => {
     const dune = await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Neuromancer', author: 'William Gibson' });
 
-    const res = await request(app).get('/books?q=duN');
+    const res = await request(app).get('/books?q=duN').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -53,7 +58,7 @@ describe('GET /books?q=', () => {
     const dune = await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Neuromancer', author: 'William Gibson' });
 
-    const res = await request(app).get('/books?q=herbert');
+    const res = await request(app).get('/books?q=herbert').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -66,7 +71,7 @@ describe('GET /books?q=', () => {
   it('matches a partial substring of a title', async () => {
     const dune = await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
 
-    const res = await request(app).get('/books?q=une');
+    const res = await request(app).get('/books?q=une').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
@@ -76,7 +81,7 @@ describe('GET /books?q=', () => {
   it('returns an empty array when nothing matches', async () => {
     await createTestBook();
 
-    const res = await request(app).get('/books?q=zzzz');
+    const res = await request(app).get('/books?q=zzzz').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -87,7 +92,7 @@ describe('GET /books?q=', () => {
     await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Neuromancer', author: 'William Gibson' });
 
-    const res = await request(app).get('/books');
+    const res = await request(app).get('/books').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -99,7 +104,7 @@ describe('GET /books?q=', () => {
   it('rejects a repeated q parameter', async () => {
     await createTestBook();
 
-    const res = await request(app).get('/books?q=dune&q=herbert');
+    const res = await request(app).get('/books?q=dune&q=herbert').set(authHeader);
 
     expect(res.status).toBe(400);
     expect(res.body.errors.q).toBeDefined();
@@ -111,7 +116,7 @@ describe('GET /books/search', () => {
   it('returns the paginated body with the documented defaults', async () => {
     const book = await createTestBook();
 
-    const res = await request(app).get('/books/search');
+    const res = await request(app).get('/books/search').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(['items', 'page', 'pageSize', 'total']);
@@ -128,7 +133,7 @@ describe('GET /books/search', () => {
     await createTestBook({ title: 'Children of Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Neuromancer', author: 'William Gibson' });
 
-    const res = await request(app).get('/books/search?q=dune&pageSize=2');
+    const res = await request(app).get('/books/search?q=dune&pageSize=2').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
@@ -142,7 +147,7 @@ describe('GET /books/search', () => {
       await createTestBook({ title, author: 'Paging Author' });
     }
 
-    const res = await request(app).get('/books/search?page=2&pageSize=2');
+    const res = await request(app).get('/books/search?page=2&pageSize=2').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(5);
@@ -154,7 +159,7 @@ describe('GET /books/search', () => {
   it('accepts the maximum page size of 100', async () => {
     await createTestBook();
 
-    const res = await request(app).get('/books/search?pageSize=100');
+    const res = await request(app).get('/books/search?pageSize=100').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.pageSize).toBe(100);
@@ -165,7 +170,7 @@ describe('GET /books/search', () => {
     await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Dune Messiah', author: 'Frank Herbert' });
 
-    const res = await request(app).get('/books/search?page=99');
+    const res = await request(app).get('/books/search?page=99').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
@@ -177,7 +182,7 @@ describe('GET /books/search', () => {
   it('returns a well-formed paginated body when nothing matches', async () => {
     await createTestBook();
 
-    const res = await request(app).get('/books/search?q=zzzz');
+    const res = await request(app).get('/books/search?q=zzzz').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([]);
@@ -192,7 +197,7 @@ describe('GET /books/search', () => {
     await createTestBook({ title: 'Children of Dune', author: 'Frank Herbert' });
     await createTestBook({ title: 'Neuromancer', author: 'William Gibson' });
 
-    const res = await request(app).get('/books/search?q=dune&page=2&pageSize=2');
+    const res = await request(app).get('/books/search?q=dune&page=2&pageSize=2').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(3);
@@ -205,12 +210,12 @@ describe('GET /books/search', () => {
   it('is reachable as its own route while GET /books/:id still resolves a real id', async () => {
     const book = await createTestBook({ title: 'Dune', author: 'Frank Herbert' });
 
-    const search = await request(app).get('/books/search');
+    const search = await request(app).get('/books/search').set(authHeader);
     expect(search.status).toBe(200);
     expect(search.body.items).toBeDefined();
     expect(search.body.error).toBeUndefined();
 
-    const byId = await request(app).get(`/books/${book.id}`);
+    const byId = await request(app).get(`/books/${book.id}`).set(authHeader);
     expect(byId.status).toBe(200);
     expect(byId.body.id).toBe(book.id);
   });
@@ -221,7 +226,7 @@ describe('GET /books/search pagination validation', () => {
     await createTestBook();
 
     for (const page of ['0', '-1', '1.5', 'abc']) {
-      const res = await request(app).get(`/books/search?page=${page}`);
+      const res = await request(app).get(`/books/search?page=${page}`).set(authHeader);
 
       expect(res.status).toBe(400);
       expect(res.body.errors.page).toBeDefined();
@@ -235,7 +240,7 @@ describe('GET /books/search pagination validation', () => {
     await createTestBook();
 
     for (const pageSize of ['0', '101', '2.5', 'abc']) {
-      const res = await request(app).get(`/books/search?pageSize=${pageSize}`);
+      const res = await request(app).get(`/books/search?pageSize=${pageSize}`).set(authHeader);
 
       expect(res.status).toBe(400);
       expect(res.body.errors.pageSize).toBeDefined();
@@ -246,7 +251,7 @@ describe('GET /books/search pagination validation', () => {
   });
 
   it('reports page and pageSize errors together', async () => {
-    const res = await request(app).get('/books/search?page=0&pageSize=101');
+    const res = await request(app).get('/books/search?page=0&pageSize=101').set(authHeader);
 
     expect(res.status).toBe(400);
     expect(res.body.errors.page).toBeDefined();

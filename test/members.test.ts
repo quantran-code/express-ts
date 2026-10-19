@@ -7,21 +7,26 @@ import type { Member } from '../src/members/types';
 import { resetBooks } from '../src/books/store';
 import { listLoans, resetLoans } from '../src/loans/store';
 import { resetMembers } from '../src/members/store';
+import { librarianAuthHeaders } from './helpers/auth';
 
 const validMember = {
   name: 'Ada Lovelace',
   email: 'ada@example.com',
 };
 
-beforeEach(() => {
+let authHeader: { Authorization: string };
+
+beforeEach(async () => {
   resetBooks();
   resetMembers();
   resetLoans();
+  authHeader = await librarianAuthHeaders();
 });
 
 async function createTestMember(overrides: Partial<typeof validMember> = {}): Promise<Member> {
   const res = await request(app)
     .post('/members')
+    .set(authHeader)
     .send({ ...validMember, ...overrides });
 
   expect(res.status).toBe(201);
@@ -36,6 +41,7 @@ async function createTestBook(overrides: Partial<{
 }> = {}): Promise<Book> {
   const res = await request(app)
     .post('/books')
+    .set(authHeader)
     .send({
       title: 'Dune',
       author: 'Frank Herbert',
@@ -53,7 +59,10 @@ async function createTestBook(overrides: Partial<{
  * member and loan endpoints work together rather than injecting store state.
  */
 async function borrowForTest(memberId: string, bookId: string): Promise<Loan> {
-  const res = await request(app).post('/loans').send({ bookId, memberId });
+  const res = await request(app)
+    .post('/loans')
+    .set(authHeader)
+    .send({ bookId, memberId });
 
   expect(res.status).toBe(201);
   return res.body as Loan;
@@ -63,6 +72,7 @@ describe('POST /members', () => {
   it('creates a member with a generated id and a normalised email', async () => {
     const res = await request(app)
       .post('/members')
+      .set(authHeader)
       .send({ name: '  Ada Lovelace ', email: '  Ada@Example.COM ' });
 
     expect(res.status).toBe(201);
@@ -71,24 +81,30 @@ describe('POST /members', () => {
     expect(typeof res.body.id).toBe('string');
     expect(res.body.id.length).toBeGreaterThan(0);
 
-    const list = await request(app).get('/members');
+    const list = await request(app).get('/members').set(authHeader);
     expect(list.status).toBe(200);
     expect(list.body).toHaveLength(1);
     expect(list.body[0].id).toBe(res.body.id);
   });
 
   it('rejects a body without name', async () => {
-    const res = await request(app).post('/members').send({ email: 'ada@example.com' });
+    const res = await request(app)
+      .post('/members')
+      .set(authHeader)
+      .send({ email: 'ada@example.com' });
 
     expect(res.status).toBe(400);
     expect(res.body.errors.name).toBeDefined();
 
-    const list = await request(app).get('/members');
+    const list = await request(app).get('/members').set(authHeader);
     expect(list.body).toHaveLength(0);
   });
 
   it('rejects a body without email', async () => {
-    const res = await request(app).post('/members').send({ name: 'Ada Lovelace' });
+    const res = await request(app)
+      .post('/members')
+      .set(authHeader)
+      .send({ name: 'Ada Lovelace' });
 
     expect(res.status).toBe(400);
     expect(res.body.errors.email).toBeDefined();
@@ -97,12 +113,13 @@ describe('POST /members', () => {
   it('rejects a malformed email', async () => {
     const res = await request(app)
       .post('/members')
+      .set(authHeader)
       .send({ name: 'Ada Lovelace', email: 'ada-at-example' });
 
     expect(res.status).toBe(400);
     expect(res.body.errors.email).toBeDefined();
 
-    const list = await request(app).get('/members');
+    const list = await request(app).get('/members').set(authHeader);
     expect(list.body).toHaveLength(0);
   });
 
@@ -111,12 +128,13 @@ describe('POST /members', () => {
 
     const res = await request(app)
       .post('/members')
+      .set(authHeader)
       .send({ name: 'Ada Again', email: '  ADA@Example.com ' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
 
-    const list = await request(app).get('/members');
+    const list = await request(app).get('/members').set(authHeader);
     expect(list.body).toHaveLength(1);
     expect(list.body[0].email).toBe('ada@example.com');
   });
@@ -124,7 +142,7 @@ describe('POST /members', () => {
 
 describe('GET /members', () => {
   it('returns an empty array when no members exist', async () => {
-    const res = await request(app).get('/members');
+    const res = await request(app).get('/members').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
@@ -134,7 +152,7 @@ describe('GET /members', () => {
     await createTestMember({ name: 'Ada Lovelace', email: 'ada@example.com' });
     await createTestMember({ name: 'Alan Turing', email: 'alan@example.com' });
 
-    const res = await request(app).get('/members');
+    const res = await request(app).get('/members').set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
@@ -147,14 +165,16 @@ describe('GET /members/:id', () => {
   it('returns the matching member', async () => {
     const created = await createTestMember();
 
-    const res = await request(app).get(`/members/${created.id}`);
+    const res = await request(app).get(`/members/${created.id}`).set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(created);
   });
 
   it('returns 404 for an id that does not exist', async () => {
-    const res = await request(app).get('/members/2b3c4d5e-0000-0000-0000-000000000000');
+    const res = await request(app)
+      .get('/members/2b3c4d5e-0000-0000-0000-000000000000')
+      .set(authHeader);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
@@ -167,6 +187,7 @@ describe('PUT /members/:id', () => {
 
     const res = await request(app)
       .put(`/members/${created.id}`)
+      .set(authHeader)
       .send({ name: 'Ada King', email: 'ada.king@example.com' });
 
     expect(res.status).toBe(200);
@@ -174,7 +195,7 @@ describe('PUT /members/:id', () => {
     expect(res.body.name).toBe('Ada King');
     expect(res.body.email).toBe('ada.king@example.com');
 
-    const stored = await request(app).get(`/members/${created.id}`);
+    const stored = await request(app).get(`/members/${created.id}`).set(authHeader);
     expect(stored.body).toEqual(res.body);
   });
 
@@ -183,12 +204,13 @@ describe('PUT /members/:id', () => {
 
     const res = await request(app)
       .put(`/members/${created.id}`)
+      .set(authHeader)
       .send({ name: 'Ada King' });
 
     expect(res.status).toBe(400);
     expect(res.body.errors.email).toBeDefined();
 
-    const stored = await request(app).get(`/members/${created.id}`);
+    const stored = await request(app).get(`/members/${created.id}`).set(authHeader);
     expect(stored.body).toEqual(created);
   });
 
@@ -198,13 +220,14 @@ describe('PUT /members/:id', () => {
 
     const res = await request(app)
       .put(`/members/${second.id}`)
+      .set(authHeader)
       .send({ name: 'Alan Turing', email: ' ADA@Example.com ' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
 
-    const storedFirst = await request(app).get(`/members/${first.id}`);
-    const storedSecond = await request(app).get(`/members/${second.id}`);
+    const storedFirst = await request(app).get(`/members/${first.id}`).set(authHeader);
+    const storedSecond = await request(app).get(`/members/${second.id}`).set(authHeader);
     expect(storedFirst.body.email).toBe('ada@example.com');
     expect(storedSecond.body.email).toBe('alan@example.com');
   });
@@ -214,6 +237,7 @@ describe('PUT /members/:id', () => {
 
     const res = await request(app)
       .put(`/members/${created.id}`)
+      .set(authHeader)
       .send({ name: 'Ada King', email: 'ada@example.com' });
 
     expect(res.status).toBe(200);
@@ -224,6 +248,7 @@ describe('PUT /members/:id', () => {
   it('returns 404 for an unknown id', async () => {
     const res = await request(app)
       .put('/members/2b3c4d5e-0000-0000-0000-000000000000')
+      .set(authHeader)
       .send(validMember);
 
     expect(res.status).toBe(404);
@@ -235,7 +260,10 @@ describe('PATCH /members/:id', () => {
   it('updates only the supplied field', async () => {
     const created = await createTestMember();
 
-    const res = await request(app).patch(`/members/${created.id}`).send({ name: 'Ada King' });
+    const res = await request(app)
+      .patch(`/members/${created.id}`)
+      .set(authHeader)
+      .send({ name: 'Ada King' });
 
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Ada King');
@@ -245,7 +273,7 @@ describe('PATCH /members/:id', () => {
   it('accepts an empty patch and changes nothing', async () => {
     const created = await createTestMember();
 
-    const res = await request(app).patch(`/members/${created.id}`).send({});
+    const res = await request(app).patch(`/members/${created.id}`).set(authHeader).send({});
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(created);
@@ -257,13 +285,14 @@ describe('PATCH /members/:id', () => {
 
     const res = await request(app)
       .patch(`/members/${second.id}`)
+      .set(authHeader)
       .send({ email: 'ada@example.com' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
 
-    const storedFirst = await request(app).get(`/members/${first.id}`);
-    const storedSecond = await request(app).get(`/members/${second.id}`);
+    const storedFirst = await request(app).get(`/members/${first.id}`).set(authHeader);
+    const storedSecond = await request(app).get(`/members/${second.id}`).set(authHeader);
     expect(storedFirst.body.email).toBe('ada@example.com');
     expect(storedSecond.body).toEqual(second);
   });
@@ -273,18 +302,20 @@ describe('PATCH /members/:id', () => {
 
     const res = await request(app)
       .patch(`/members/${created.id}`)
+      .set(authHeader)
       .send({ email: 'not-an-email' });
 
     expect(res.status).toBe(400);
     expect(res.body.errors.email).toBeDefined();
 
-    const stored = await request(app).get(`/members/${created.id}`);
+    const stored = await request(app).get(`/members/${created.id}`).set(authHeader);
     expect(stored.body).toEqual(created);
   });
 
   it('returns 404 for an unknown id', async () => {
     const res = await request(app)
       .patch('/members/2b3c4d5e-0000-0000-0000-000000000000')
+      .set(authHeader)
       .send({ name: 'Ada King' });
 
     expect(res.status).toBe(404);
@@ -296,11 +327,11 @@ describe('DELETE /members/:id', () => {
   it('deletes a member with no active loans', async () => {
     const created = await createTestMember();
 
-    const res = await request(app).delete(`/members/${created.id}`);
+    const res = await request(app).delete(`/members/${created.id}`).set(authHeader);
 
     expect(res.status).toBe(204);
 
-    const stored = await request(app).get(`/members/${created.id}`);
+    const stored = await request(app).get(`/members/${created.id}`).set(authHeader);
     expect(stored.status).toBe(404);
   });
 
@@ -309,12 +340,12 @@ describe('DELETE /members/:id', () => {
     const book = await createTestBook();
     await borrowForTest(member.id, book.id);
 
-    const res = await request(app).delete(`/members/${member.id}`);
+    const res = await request(app).delete(`/members/${member.id}`).set(authHeader);
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
 
-    const stillThere = await request(app).get(`/members/${member.id}`);
+    const stillThere = await request(app).get(`/members/${member.id}`).set(authHeader);
     expect(stillThere.status).toBe(200);
     expect(stillThere.body).toEqual(member);
   });
@@ -324,11 +355,11 @@ describe('DELETE /members/:id', () => {
     const book = await createTestBook();
     const loan = await borrowForTest(member.id, book.id);
 
-    const returned = await request(app).patch(`/loans/${loan.id}/return`);
+    const returned = await request(app).patch(`/loans/${loan.id}/return`).set(authHeader);
     expect(returned.status).toBe(200);
     expect(returned.body.returnedAt).not.toBeNull();
 
-    const deleted = await request(app).delete(`/members/${member.id}`);
+    const deleted = await request(app).delete(`/members/${member.id}`).set(authHeader);
     expect(deleted.status).toBe(204);
 
     const history = listLoans().filter((stored) => stored.memberId === member.id);
@@ -338,7 +369,9 @@ describe('DELETE /members/:id', () => {
   });
 
   it('returns 404 for an unknown id', async () => {
-    const res = await request(app).delete('/members/2b3c4d5e-0000-0000-0000-000000000000');
+    const res = await request(app)
+      .delete('/members/2b3c4d5e-0000-0000-0000-000000000000')
+      .set(authHeader);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
@@ -347,9 +380,9 @@ describe('DELETE /members/:id', () => {
 
 describe('GET /members/:id/loans', () => {
   it('returns 404 for an unknown member id', async () => {
-    const res = await request(app).get(
-      '/members/2b3c4d5e-0000-0000-0000-000000000000/loans',
-    );
+    const res = await request(app)
+      .get('/members/2b3c4d5e-0000-0000-0000-000000000000/loans')
+      .set(authHeader);
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();

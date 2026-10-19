@@ -7,6 +7,7 @@ import type { Member } from '../src/members/types';
 import { resetBooks } from '../src/books/store';
 import { resetLoans } from '../src/loans/store';
 import { resetMembers } from '../src/members/store';
+import { librarianAuthHeaders } from './helpers/auth';
 
 /**
  * The standard loan period used by the acceptance criteria: 14 days in milliseconds.
@@ -47,6 +48,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * Tokens are minted per request, never cached: this suite moves the clock 14 days past
+ * the 1-hour token lifetime, so a header obtained before the jump would be expired for
+ * every request made after it.
+ */
 async function createTestBook(overrides: Partial<{
   title: string;
   author: string;
@@ -55,8 +61,10 @@ async function createTestBook(overrides: Partial<{
 }> = {}): Promise<Book> {
   isbnSuffix += 1;
 
+  const auth = await librarianAuthHeaders();
   const res = await request(app)
     .post('/books')
+    .set(auth)
     .send({
       title: 'Dune',
       author: 'Frank Herbert',
@@ -70,8 +78,10 @@ async function createTestBook(overrides: Partial<{
 }
 
 async function createTestMember(overrides: Partial<typeof validMember> = {}): Promise<Member> {
+  const auth = await librarianAuthHeaders();
   const res = await request(app)
     .post('/members')
+    .set(auth)
     .send({ ...validMember, ...overrides });
 
   expect(res.status).toBe(201);
@@ -83,14 +93,20 @@ async function borrowForTest(
   bookId: string,
   extra: Record<string, unknown> = {},
 ): Promise<Loan> {
-  const res = await request(app).post('/loans').send({ bookId, memberId, ...extra });
+  const auth = await librarianAuthHeaders();
+  const res = await request(app)
+    .post('/loans')
+    .set(auth)
+    .send({ bookId, memberId, ...extra });
 
   expect(res.status).toBe(201);
   return res.body as Loan;
 }
 
 async function overdueForTest(query = ''): Promise<OverdueLoan[]> {
-  const res = await request(app).get(`/loans/overdue${query}`);
+  const res = await request(app)
+    .get(`/loans/overdue${query}`)
+    .set(await librarianAuthHeaders());
 
   expect(res.status).toBe(200);
   expect(Array.isArray(res.body)).toBe(true);
@@ -102,7 +118,10 @@ describe('POST /loans dueDate', () => {
     const book = await createTestBook();
     const member = await createTestMember();
 
-    const res = await request(app).post('/loans').send({ bookId: book.id, memberId: member.id });
+    const res = await request(app)
+      .post('/loans')
+      .set(await librarianAuthHeaders())
+      .send({ bookId: book.id, memberId: member.id });
 
     expect(res.status).toBe(201);
     expect(typeof res.body.borrowedAt).toBe('string');
@@ -118,12 +137,15 @@ describe('POST /loans dueDate', () => {
 
     const res = await request(app)
       .post('/loans')
+      .set(await librarianAuthHeaders())
       .send({ bookId: book.id, memberId: member.id, dueDate: '2000-01-01T00:00:00.000Z' });
 
     expect(res.status).toBe(201);
     expect(res.body.dueDate).toBe(new Date(NOW + LOAN_PERIOD_MS).toISOString());
 
-    const stored = await request(app).get(`/members/${member.id}/loans`);
+    const stored = await request(app)
+      .get(`/members/${member.id}/loans`)
+      .set(await librarianAuthHeaders());
     expect(stored.status).toBe(200);
     expect(stored.body).toHaveLength(1);
     expect(stored.body[0].dueDate).toBe(res.body.dueDate);
@@ -189,7 +211,9 @@ describe('GET /loans/overdue', () => {
     const member = await createTestMember();
     const loan = await borrowForTest(member.id, book.id);
 
-    const returned = await request(app).patch(`/loans/${loan.id}/return`);
+    const returned = await request(app)
+      .patch(`/loans/${loan.id}/return`)
+      .set(await librarianAuthHeaders());
     expect(returned.status).toBe(200);
     expect(returned.body.returnedAt).not.toBeNull();
 
@@ -209,7 +233,7 @@ describe('GET /loans/overdue', () => {
 
     vi.setSystemTime(NOW + LOAN_PERIOD_MS + 60 * 60 * 1000);
 
-    const res = await request(app).get('/loans/overdue');
+    const res = await request(app).get('/loans/overdue').set(await librarianAuthHeaders());
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(2);
@@ -218,7 +242,9 @@ describe('GET /loans/overdue', () => {
     const titles = res.body.map((loan: OverdueLoan) => loan.bookTitle).sort();
     expect(titles).toEqual(['Book A', 'Book B']);
 
-    const withPagingParams = await request(app).get('/loans/overdue?page=1&pageSize=1');
+    const withPagingParams = await request(app)
+      .get('/loans/overdue?page=1&pageSize=1')
+      .set(await librarianAuthHeaders());
     expect(withPagingParams.status).toBe(200);
     expect(withPagingParams.body).toHaveLength(2);
   });
