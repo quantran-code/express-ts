@@ -1,4 +1,5 @@
 import { Router, RequestHandler } from 'express';
+import { callerMemberId, isLibrarian, requireLibrarian } from '../auth/middleware';
 import { findBookById } from '../books/store';
 import { findMemberById } from '../members/store';
 import type { OverdueLoan } from '../loans/types';
@@ -18,6 +19,10 @@ export const loansRouter: Router = Router();
 /**
  * Borrowing is a precondition gate: every rejection happens before any store
  * mutation, so a failed borrow never leaves availability or the ledger changed.
+ *
+ * The borrowing member is resolved from the caller's role, never from the body alone: a
+ * member always borrows for themselves (a supplied `memberId` is discarded, not
+ * rejected), while a librarian must name the member explicitly.
  */
 export const borrowLoanHandler: RequestHandler = (req, res) => {
   const result = validateCreateLoan(req.body);
@@ -26,13 +31,31 @@ export const borrowLoanHandler: RequestHandler = (req, res) => {
     return;
   }
 
+  let memberId: string;
+  if (isLibrarian(req)) {
+    if (result.value.memberId === undefined) {
+      res.status(400).json({
+        errors: { memberId: 'memberId is required and must be a non-empty string' },
+      });
+      return;
+    }
+    memberId = result.value.memberId;
+  } else {
+    const ownMemberId = callerMemberId(req);
+    if (ownMemberId === null) {
+      res.status(403).json({ error: 'This account has no member record to borrow for' });
+      return;
+    }
+    memberId = ownMemberId;
+  }
+
   const book = findBookById(result.value.bookId);
   if (!book) {
     res.status(404).json({ error: 'Book not found' });
     return;
   }
 
-  const member = findMemberById(result.value.memberId);
+  const member = findMemberById(memberId);
   if (!member) {
     res.status(404).json({ error: 'Member not found' });
     return;
@@ -76,6 +99,11 @@ export const returnLoanHandler: RequestHandler<{ id: string }> = (req, res) => {
     return;
   }
 
+  if (!isLibrarian(req) && callerMemberId(req) !== existing.memberId) {
+    res.status(403).json({ error: 'A member may only return their own loan' });
+    return;
+  }
+
   const loan = returnLoan(existing.id);
   if (!loan) {
     res.status(404).json({ error: 'Loan not found' });
@@ -114,5 +142,5 @@ export const listOverdueLoansHandler: RequestHandler = (_req, res) => {
 };
 
 loansRouter.post('/', borrowLoanHandler);
-loansRouter.get('/overdue', listOverdueLoansHandler);
+loansRouter.get('/overdue', requireLibrarian, listOverdueLoansHandler);
 loansRouter.patch('/:id/return', returnLoanHandler);

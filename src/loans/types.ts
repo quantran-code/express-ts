@@ -9,7 +9,12 @@ export interface Loan {
 
 export interface CreateLoanInput {
   bookId: string;
-  memberId: string;
+  /**
+   * Supplied only by a librarian borrowing on behalf of an explicit member. A member's
+   * identity always comes from the token, so any value a member sends is discarded by the
+   * route rather than rejected.
+   */
+  memberId?: string | undefined;
 }
 
 /**

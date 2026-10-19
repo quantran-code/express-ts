@@ -18,8 +18,10 @@ function validateIdField(
 }
 
 /**
- * Validates a borrow payload. Both ids must be non-empty strings; whether the
- * referenced book and member exist is checked by the route layer.
+ * Validates a borrow payload. `bookId` must be a non-empty string. `memberId` is optional
+ * at the shape level — a member caller's identity comes from the token — but a supplied
+ * value must still be a non-empty string. Whether it is *required* is a permission
+ * question decided by the route layer, which knows the caller's role.
  */
 export function validateCreateLoan(body: unknown): ValidationResult<CreateLoanInput> {
   if (!isRecord(body)) {
@@ -28,9 +30,11 @@ export function validateCreateLoan(body: unknown): ValidationResult<CreateLoanIn
 
   const errors: FieldErrors = {};
   const bookId = validateIdField(body, 'bookId', errors);
-  const memberId = validateIdField(body, 'memberId', errors);
 
-  if (bookId === undefined || memberId === undefined) {
+  const hasMemberId = body['memberId'] !== undefined;
+  const memberId = hasMemberId ? validateIdField(body, 'memberId', errors) : undefined;
+
+  if (bookId === undefined || (hasMemberId && memberId === undefined)) {
     return { ok: false, errors };
   }
 

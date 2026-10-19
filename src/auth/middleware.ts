@@ -44,3 +44,34 @@ export const authenticateToken: RequestHandler = (req, res, next) => {
   req.authUser = user;
   next();
 };
+
+/**
+ * True only for a caller whose verified token carries the librarian role. Used by the
+ * member and loan routes, which scope their data by ownership rather than by role.
+ */
+export function isLibrarian(req: Request): boolean {
+  return req.authUser?.role === 'librarian';
+}
+
+/**
+ * The member record id carried by the caller's token, or `null` when the token has none
+ * (the seeded librarian has no member record). Identity always comes from the token, so a
+ * request body can never widen what the caller may act on.
+ */
+export function callerMemberId(req: Request): string | null {
+  return req.authUser?.memberId ?? null;
+}
+
+/**
+ * Restricts a route to librarians. Always mounted after `authenticateToken`, so a missing
+ * or invalid token is already a 401 by the time this runs and the only rejection here is a
+ * 403 for a member caller.
+ */
+export const requireLibrarian: RequestHandler = (req, res, next) => {
+  if (!isLibrarian(req)) {
+    res.status(403).json({ error: 'A librarian role is required' });
+    return;
+  }
+
+  next();
+};

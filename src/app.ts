@@ -4,6 +4,7 @@ import { authRouter } from './routes/auth';
 import { booksRouter } from './routes/books';
 import { membersRouter } from './routes/members';
 import { loansRouter } from './routes/loans';
+import { reportsRouter } from './routes/reports';
 
 const app: Application = express();
 
@@ -18,5 +19,6 @@ app.use('/auth', authRouter);
 app.use('/books', authenticateToken, booksRouter);
 app.use('/members', authenticateToken, membersRouter);
 app.use('/loans', authenticateToken, loansRouter);
+app.use('/reports', authenticateToken, reportsRouter);
 
 export default app;

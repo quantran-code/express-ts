@@ -1,4 +1,5 @@
-import { Router, RequestHandler } from 'express';
+import { Router, Request, RequestHandler } from 'express';
+import { callerMemberId, isLibrarian, requireLibrarian } from '../auth/middleware';
 import {
   createMember,
   deleteMember,
@@ -17,6 +18,19 @@ import { countActiveLoansByMember, listActiveLoansByMember } from '../loans/stor
 
 export const membersRouter: Router = Router();
 
+/**
+ * Whether the caller may act on the member record `memberId`. Librarians manage every
+ * member; a member only ever reaches the record their own token points at. The target is
+ * never looked up, so a cross-member attempt is a 403 whether or not the id exists.
+ */
+export function canAccessMember(req: Request, memberId: string): boolean {
+  if (isLibrarian(req)) {
+    return true;
+  }
+
+  return callerMemberId(req) === memberId;
+}
+
 export const createMemberHandler: RequestHandler = (req, res) => {
   const result = validateCreateMember(req.body);
   if (!result.ok) {
@@ -34,11 +48,28 @@ export const createMemberHandler: RequestHandler = (req, res) => {
   res.status(201).json(member);
 };
 
-export const listMembersHandler: RequestHandler = (_req, res) => {
-  res.status(200).json(listMembers());
+/**
+ * A librarian sees the whole registry; a member sees only their own record, so listing
+ * members never exposes another member's data. A member token without a member record
+ * (the seeded librarian has none, but a member always does) yields an empty list.
+ */
+export const listMembersHandler: RequestHandler = (req, res) => {
+  if (isLibrarian(req)) {
+    res.status(200).json(listMembers());
+    return;
+  }
+
+  const memberId = callerMemberId(req);
+  const member = memberId === null ? undefined : findMemberById(memberId);
+  res.status(200).json(member ? [member] : []);
 };
 
 export const getMemberByIdHandler: RequestHandler<{ id: string }> = (req, res) => {
+  if (!canAccessMember(req, req.params.id)) {
+    res.status(403).json({ error: 'A member may only access their own record' });
+    return;
+  }
+
   const member = findMemberById(req.params.id);
   if (!member) {
     res.status(404).json({ error: 'Member not found' });
@@ -49,6 +80,11 @@ export const getMemberByIdHandler: RequestHandler<{ id: string }> = (req, res) =
 };
 
 export const replaceMemberHandler: RequestHandler<{ id: string }> = (req, res) => {
+  if (!canAccessMember(req, req.params.id)) {
+    res.status(403).json({ error: 'A member may only access their own record' });
+    return;
+  }
+
   const result = validateCreateMember(req.body);
   if (!result.ok) {
     res.status(400).json({ errors: result.errors });
@@ -78,6 +114,11 @@ export const replaceMemberHandler: RequestHandler<{ id: string }> = (req, res) =
 };
 
 export const patchMemberHandler: RequestHandler<{ id: string }> = (req, res) => {
+  if (!canAccessMember(req, req.params.id)) {
+    res.status(403).json({ error: 'A member may only access their own record' });
+    return;
+  }
+
   const result = validatePatchMember(req.body);
   if (!result.ok) {
     res.status(400).json({ errors: result.errors });
@@ -111,6 +152,11 @@ export const patchMemberHandler: RequestHandler<{ id: string }> = (req, res) => 
 };
 
 export const deleteMemberHandler: RequestHandler<{ id: string }> = (req, res) => {
+  if (!canAccessMember(req, req.params.id)) {
+    res.status(403).json({ error: 'A member may only access their own record' });
+    return;
+  }
+
   const existing = findMemberById(req.params.id);
   if (!existing) {
     res.status(404).json({ error: 'Member not found' });
@@ -127,6 +173,11 @@ export const deleteMemberHandler: RequestHandler<{ id: string }> = (req, res) =>
 };
 
 export const listMemberLoansHandler: RequestHandler<{ id: string }> = (req, res) => {
+  if (!canAccessMember(req, req.params.id)) {
+    res.status(403).json({ error: 'A member may only access their own loans' });
+    return;
+  }
+
   const member = findMemberById(req.params.id);
   if (!member) {
     res.status(404).json({ error: 'Member not found' });
@@ -136,7 +187,7 @@ export const listMemberLoansHandler: RequestHandler<{ id: string }> = (req, res)
   res.status(200).json(listActiveLoansByMember(member.id));
 };
 
-membersRouter.post('/', createMemberHandler);
+membersRouter.post('/', requireLibrarian, createMemberHandler);
 membersRouter.get('/', listMembersHandler);
 membersRouter.get('/:id', getMemberByIdHandler);
 membersRouter.put('/:id', replaceMemberHandler);

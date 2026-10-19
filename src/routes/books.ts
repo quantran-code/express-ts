@@ -1,4 +1,5 @@
 import { Router, RequestHandler } from 'express';
+import { requireLibrarian } from '../auth/middleware';
 import {
   createBook,
   deleteBook,
@@ -163,10 +164,10 @@ export const deleteBookHandler: RequestHandler<{ id: string }> = (req, res) => {
   res.status(204).send();
 };
 
-booksRouter.post('/', createBookHandler);
+booksRouter.post('/', requireLibrarian, createBookHandler);
 booksRouter.get('/', listBooksHandler);
 booksRouter.get('/search', searchBooksHandler);
 booksRouter.get('/:id', getBookByIdHandler);
-booksRouter.put('/:id', replaceBookHandler);
-booksRouter.patch('/:id', patchBookHandler);
-booksRouter.delete('/:id', deleteBookHandler);
+booksRouter.put('/:id', requireLibrarian, replaceBookHandler);
+booksRouter.patch('/:id', requireLibrarian, patchBookHandler);
+booksRouter.delete('/:id', requireLibrarian, deleteBookHandler);

@@ -27,10 +27,11 @@ function isActive(loan: Loan): boolean {
 
 /**
  * Records a loan against the referenced book and takes one copy out of circulation.
- * The caller (route layer) is responsible for the borrow preconditions; the store only
- * guarantees that what it is told to do stays consistent. Unknown book ids are refused.
+ * The caller (route layer) is responsible for the borrow preconditions, including
+ * resolving `memberId` from the caller's role; the store only guarantees that what it is
+ * told to do stays consistent. Unknown book ids are refused.
  */
-export function createLoan(input: CreateLoanInput): Loan | undefined {
+export function createLoan(input: CreateLoanInput & { memberId: string }): Loan | undefined {
   const book = findBookById(input.bookId);
   if (!book) {
     return undefined;
