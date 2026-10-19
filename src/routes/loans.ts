@@ -1,12 +1,14 @@
 import { Router, RequestHandler } from 'express';
 import { findBookById } from '../books/store';
 import { findMemberById } from '../members/store';
+import type { OverdueLoan } from '../loans/types';
 import {
   MAX_ACTIVE_LOANS,
   countActiveLoansByMember,
   createLoan,
   findActiveLoan,
   findLoanById,
+  listOverdueLoans,
   returnLoan,
 } from '../loans/store';
 import { validateCreateLoan } from '../loans/validation';
@@ -83,5 +85,34 @@ export const returnLoanHandler: RequestHandler<{ id: string }> = (req, res) => {
   res.status(200).json(loan);
 };
 
+/**
+ * Lists every loan that is past its due date, joined with the book title and member name.
+ * The clock is read on each request so a loan becomes overdue the moment its dueDate
+ * passes, with no write in between. The list is deliberately unpaginated: the whole
+ * overdue set is returned in one response. A loan whose book or member record is gone is
+ * omitted rather than reported with a missing title or name.
+ */
+export const listOverdueLoansHandler: RequestHandler = (_req, res) => {
+  const now = Date.now();
+  const overdue: OverdueLoan[] = [];
+
+  for (const loan of listOverdueLoans(now)) {
+    const book = findBookById(loan.bookId);
+    const member = findMemberById(loan.memberId);
+    if (!book || !member) {
+      continue;
+    }
+
+    overdue.push({
+      ...loan,
+      bookTitle: book.title,
+      memberName: member.name,
+    });
+  }
+
+  res.status(200).json(overdue);
+};
+
 loansRouter.post('/', borrowLoanHandler);
+loansRouter.get('/overdue', listOverdueLoansHandler);
 loansRouter.patch('/:id/return', returnLoanHandler);

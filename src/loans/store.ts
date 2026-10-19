@@ -8,6 +8,11 @@ import { findBookById, patchBook } from '../books/store';
 export const MAX_ACTIVE_LOANS = 3;
 
 /**
+ * Standard loan period in days: dueDate is borrowedAt plus this many days.
+ */
+export const LOAN_PERIOD_DAYS = 14;
+
+/**
  * Module-level in-memory loan ledger. Process memory only: no database, no migrations.
  */
 const loans = new Map<string, Loan>();
@@ -31,11 +36,15 @@ export function createLoan(input: CreateLoanInput): Loan | undefined {
     return undefined;
   }
 
+  const borrowedAt = new Date();
+  const dueDate = new Date(borrowedAt.getTime() + LOAN_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+
   const loan: Loan = {
     id: randomUUID(),
     bookId: input.bookId,
     memberId: input.memberId,
-    borrowedAt: new Date().toISOString(),
+    borrowedAt: borrowedAt.toISOString(),
+    dueDate: dueDate.toISOString(),
     returnedAt: null,
   };
 
@@ -70,6 +79,21 @@ export function listActiveLoansByMember(memberId: string): Loan[] {
     }
   }
   return active;
+}
+
+/**
+ * Lists the loans that are still out and strictly past their due date. The current
+ * moment is supplied by the caller so this stays a pure filter over the ledger: status
+ * is recalculated per request and nothing about overdue-ness is stored.
+ */
+export function listOverdueLoans(now: number): Loan[] {
+  const overdue: Loan[] = [];
+  for (const loan of loans.values()) {
+    if (isActive(loan) && Date.parse(loan.dueDate) < now) {
+      overdue.push(clone(loan));
+    }
+  }
+  return overdue;
 }
 
 export function countActiveLoansByMember(memberId: string): number {

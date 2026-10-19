@@ -4,13 +4,16 @@ import {
   deleteBook,
   findBookById,
   findBookByIsbn,
-  listBooks,
+  listBooksByQuery,
   patchBook,
   replaceBook,
+  searchBooks,
 } from '../books/store';
 import {
   nextAvailableCopies,
   normalizeIsbn,
+  readSearchTerm,
+  validateCatalogQuery,
   validateCreateBook,
   validatePatchBook,
 } from '../books/validation';
@@ -34,8 +37,24 @@ export const createBookHandler: RequestHandler = (req, res) => {
   res.status(201).json(book);
 };
 
-export const listBooksHandler: RequestHandler = (_req, res) => {
-  res.status(200).json(listBooks());
+export const listBooksHandler: RequestHandler = (req, res) => {
+  const searchTerm = readSearchTerm(req.query);
+  if (!searchTerm.ok) {
+    res.status(400).json({ errors: searchTerm.errors });
+    return;
+  }
+
+  res.status(200).json(listBooksByQuery(searchTerm.value));
+};
+
+export const searchBooksHandler: RequestHandler = (req, res) => {
+  const result = validateCatalogQuery(req.query);
+  if (!result.ok) {
+    res.status(400).json({ errors: result.errors });
+    return;
+  }
+
+  res.status(200).json(searchBooks(result.value));
 };
 
 export const getBookByIdHandler: RequestHandler<{ id: string }> = (req, res) => {
@@ -146,6 +165,7 @@ export const deleteBookHandler: RequestHandler<{ id: string }> = (req, res) => {
 
 booksRouter.post('/', createBookHandler);
 booksRouter.get('/', listBooksHandler);
+booksRouter.get('/search', searchBooksHandler);
 booksRouter.get('/:id', getBookByIdHandler);
 booksRouter.put('/:id', replaceBookHandler);
 booksRouter.patch('/:id', patchBookHandler);

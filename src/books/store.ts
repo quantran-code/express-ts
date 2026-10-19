@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto';
-import type { Book, CreateBookInput, PatchBookInput } from './types';
-import { normalizeIsbn } from './validation';
+import type {
+  Book,
+  BookSearchQuery,
+  CreateBookInput,
+  PaginatedBooks,
+  PatchBookInput,
+} from './types';
+import { normalizeIsbn, matchesBookSearch } from './validation';
 
 /**
  * Module-level in-memory catalog. Process memory only: no database, no migrations.
@@ -27,6 +33,31 @@ export function createBook(input: CreateBookInput): Book {
 
 export function listBooks(): Book[] {
   return Array.from(books.values(), clone);
+}
+
+/**
+ * Lists the books matching an optional search term (title or author, case-insensitive).
+ * An absent or blank term returns every book, exactly like listBooks().
+ */
+export function listBooksByQuery(q: string | undefined): Book[] {
+  return listBooks().filter((book) => matchesBookSearch(book, q));
+}
+
+/**
+ * Returns one page of the catalog after applying the optional search term. The search
+ * runs before slicing, so `total` is the number of matches catalog-wide; a page past the
+ * last one yields an empty `items` array but still reports the real `total`.
+ */
+export function searchBooks(query: BookSearchQuery): PaginatedBooks {
+  const matches = listBooksByQuery(query.q);
+  const start = (query.page - 1) * query.pageSize;
+
+  return {
+    items: matches.slice(start, start + query.pageSize),
+    total: matches.length,
+    page: query.page,
+    pageSize: query.pageSize,
+  };
 }
 
 export function findBookById(id: string): Book | undefined {
